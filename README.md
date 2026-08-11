@@ -90,9 +90,10 @@ horizon-profile PNGs). DEM tiles are cached in `data/dem/`.
   mapped woodland (observer-canopy mask) so it is correctly rejected as a
   standing point. Top moorland sites show vegRisk ≈ 0 (genuinely tree-free
   sightlines).
-- **Inferred / not yet modelled**: buildings (rural rays unaffected); sub-30 m
-  hedge lines; canopy heights from the Hansen model; land-access details.
-  EA 1 m LiDAR was probed but is not anonymously accessible.
+- **Inferred / not yet modelled**: sub-30 m hedge lines outside the inner
+  region; untagged building heights (default 6 m); canopy heights from the
+  Hansen model; land-access details. EA 1 m LiDAR was probed but is not
+  anonymously accessible.
 - **Would need ground-truthing**: exact standing spot, fence/stile access,
   local tree lines not in any dataset.
 
@@ -124,10 +125,12 @@ A two-ring raster is embedded (gzip+base64): 30 m terrain + 30 m modelled
 canopy within 15 km of the origin, ~90 m beyond, out to 55 km. Each click
 computes the bare and canopy-corrected horizon (211 azimuths x 792 range
 bins, ~167k samples) in ~15 ms and draws it as SVG with the sun track,
-plus Google-Maps/OSM links. Cross-checked against the server pipeline
-(ranking metric agrees to ~0.1°; per-azimuth differences up to ~0.5° come
-from the 90 m far-field terrain and are flagged in the panel). Buildings
-and hedges are not modelled yet (stage 2: OSM rasterisation).
+plus Google-Maps/OSM links. OSM buildings (319k in the inner region,
+10 m raster, tagged heights else 2-storey default) and hedges are
+max-combined with the canopy as obstacles; clicking inside a mapped
+building shows a warning. Cross-checked against the server pipeline
+(bare terrain ~0.1°; urban green line correctly jumps to ~11° in central
+Manchester where the server model has no buildings).
 
 ## Data sources & attribution
 

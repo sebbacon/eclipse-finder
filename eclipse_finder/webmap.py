@@ -23,20 +23,33 @@ from .dem import DEMO_DIR, Dem
 from .horizon import _meters_per_deg
 from .solar import azimuth_sector, compute_eclipse_geometry
 from .vegetation import Veg
+from .buildings import B_RES_M, extract_vectors, rasterize
 
 OUTPUT_DIR = pathlib.Path(__file__).parent.parent / "output"
 INNER_RADIUS_KM = 15.0
 
 
 # ---------------------------------------------------------------- raster ----
-def _raster_bytes(dem: Dem, veg: Veg, origin: tuple[float, float]) -> bytes:
-    """Two-ring terrain+canopy raster, little-endian, int16 sections first.
+def _inner_window(dem: Dem, lon_o: float, lat_o: float):
+    m_lon, m_lat = _meters_per_deg(lat_o)
+    r_in = int(INNER_RADIUS_KM * 1000 / (dem.res_lat * m_lat))
+    c_in = int(INNER_RADIUS_KM * 1000 / (dem.res * m_lon))
+    oc, orow = dem.lonlat_to_px(np.asarray(lon_o), np.asarray(lat_o))
+    oc, orow = int(round(float(oc))), int(round(float(orow)))
+    r0, r1 = max(0, orow - r_in), min(dem.h, orow + r_in)
+    c0, c1 = max(0, oc - c_in), min(dem.w, oc + c_in)
+    return dict(r0=r0, r1=r1, c0=c0, c1=c1, m_lon=m_lon, m_lat=m_lat,
+                lon0=dem.lon0 + c0 * dem.res, lat0=dem.lat0 - r0 * dem.res_lat)
 
-    layout: magic 'EFR1'
-      outer grid hdr: lon0,lat0,res_lon,res_lat (f64), w,h (u32)
-      inner grid hdr: same
-      t_out int16[h*w], t_in int16[h*w], c_out u8, c_in u8
-    canopy is resampled (nearest) onto the dem grid, heights in metres (0-255).
+
+def _raster_bytes(dem: Dem, veg: Veg, origin: tuple[float, float],
+                  b_in: np.ndarray) -> bytes:
+    """Two-ring terrain+canopy raster + 10 m building/hedge layer, LE.
+
+    layout: magic 'EFR2'
+      outer/inner/bld grid hdrs: lon0,lat0,res_lon,res_lat (f64), w,h (u32)
+      t_out int16, t_in int16, b_in u8, c_out u8, c_in u8
+    canopy resampled (bilinear) onto the dem grid; heights in metres.
     """
     lon_o, lat_o = origin
     # canopy resampled onto dem native grid (bilinear, chunked)
@@ -60,27 +73,23 @@ def _raster_bytes(dem: Dem, veg: Veg, origin: tuple[float, float]) -> bytes:
     H, W = can30.shape
     c_out = can30[: H // 3 * 3, : W // 3 * 3].reshape(H // 3, 3, W // 3, 3).max(axis=(1, 3))
 
-    m_lon, m_lat = _meters_per_deg(lat_o)
-    r_in = int(INNER_RADIUS_KM * 1000 / (dem.res_lat * m_lat))
-    c_in = int(INNER_RADIUS_KM * 1000 / (dem.res * m_lon))
-    oc, orow = dem.lonlat_to_px(np.asarray(lon_o), np.asarray(lat_o))
-    oc, orow = int(round(float(oc))), int(round(float(orow)))
-    r0, r1 = max(0, orow - r_in), min(dem.h, orow + r_in)
-    c0, c1 = max(0, oc - c_in), min(dem.w, oc + c_in)
-    t_in = dem.a[r0:r1, c0:c1]
-    cn_in = can30[r0:r1, c0:c1]
+    win = _inner_window(dem, lon_o, lat_o)
+    t_in = dem.a[win["r0"]:win["r1"], win["c0"]:win["c1"]]
+    cn_in = can30[win["r0"]:win["r1"], win["c0"]:win["c1"]]
 
     def hdr(lon0, lat0, rl, rt, w, h):
         return struct.pack("<4d2I", lon0, lat0, rl, rt, w, h)
 
     out = bytearray()
-    out += b"EFR1"
+    out += b"EFR2"
     out += hdr(dem.lon0, dem.lat0, dem.res, dem.res_lat, t_out.shape[1], t_out.shape[0])
-    out += hdr(dem.lon0 + c0 * dem.res, dem.lat0 - r0 * dem.res_lat,
-               dem.res, dem.res_lat, t_in.shape[1], t_in.shape[0])
+    out += hdr(win["lon0"], win["lat0"], dem.res, dem.res_lat,
+               t_in.shape[1], t_in.shape[0])
+    out += hdr(win["lon0"], win["lat0"], B_RES_M / win["m_lon"], B_RES_M / win["m_lat"],
+               b_in.shape[1], b_in.shape[0])
     for a in (t_out, t_in):
         out += np.ascontiguousarray(a.astype("<i2")).tobytes()
-    for a in (c_out, cn_in):
+    for a in (b_in, c_out, cn_in):
         out += np.ascontiguousarray(a).tobytes()
     return bytes(out)
 
@@ -100,7 +109,17 @@ def build_webmap(name: str, verbose: bool = True):
             dem.lon0 + dem.w * dem.res, dem.lat0)
     veg = Veg.for_bbox(bbox, verbose=verbose)
 
-    raw = _raster_bytes(dem, veg, (meta["lon"], meta["lat"]))
+    win = _inner_window(dem, meta["lon"], meta["lat"])
+    bbox_in = (win["lon0"], win["lat0"] - (win["r1"] - win["r0"]) * dem.res_lat,
+               win["lon0"] + (win["c1"] - win["c0"]) * dem.res, win["lat0"])
+    vec = extract_vectors(name, bbox_in, verbose=verbose)
+    b_w = int((win["c1"] - win["c0"]) * dem.res / (B_RES_M / win["m_lon"]))
+    b_h = int((win["r1"] - win["r0"]) * dem.res_lat / (B_RES_M / win["m_lat"]))
+    b_in = rasterize(vec, win["lon0"], win["lat0"], b_w, b_h,
+                     win["m_lon"], win["m_lat"])
+    if verbose:
+        print(f"[webmap] building layer {b_w}x{b_h}, max {b_in.max()} m")
+    raw = _raster_bytes(dem, veg, (meta["lon"], meta["lat"]), b_in)
     b64 = base64.b64encode(gzip.compress(raw, 6)).decode()
     if verbose:
         print(f"[webmap] raster {len(raw)/1e6:.1f} MB raw -> {len(b64)/1e6:.1f} MB base64")
@@ -207,8 +226,8 @@ D.sites.forEach(s => {
 document.getElementById("legend").innerHTML =
   `<b>${D.name}</b> — ${D.date}, max ${D.t_max} UTC (mag ${D.mag})<br>` +
   `click <i>anywhere</i>: horizon computed in your browser (30 m terrain+canopy within ` +
-  `${D.inner_km} km of origin, ~90 m beyond). Markers = geometry-ranked sites ` +
-  `(green = best). Buildings not modelled yet.`;
+  `${D.inner_km} km of origin, ~90 m beyond; OSM buildings+hedges at 10 m in the inner ` +
+  `region). Markers = geometry-ranked sites (green = best).`;
 
 // ---------------------------------------------------------- raster decode --
 let G = null;  // parsed raster grids
@@ -225,17 +244,21 @@ async function loadRaster(){
       w: dv.getUint32(off+32, true), h: dv.getUint32(off+36, true)};
     off += 40; g.n = g.w * g.h; return g;
   }
-  G = {outer: grid(), inner: grid(), buf};
+  G = {outer: grid(), inner: grid(), bld: grid(), buf};
   const u8 = new Uint8Array(buf);
   let p = off;
   G.outer.t = new Int16Array(buf, p, G.outer.n); p += 2*G.outer.n;
   G.inner.t = new Int16Array(buf, p, G.inner.n); p += 2*G.inner.n;
+  G.bld.b = u8.subarray(p, p + G.bld.n); p += G.bld.n;
   G.outer.c = u8.subarray(p, p + G.outer.n); p += G.outer.n;
   G.inner.c = u8.subarray(p, p + G.inner.n);
 }
 loadRaster().then(() => {
-  if (location.hash === "#test") {
-    const h = horizon(D.origin[1], D.origin[0]);
+  if (location.hash.startsWith("#test")) {
+    let [la, lo] = D.origin;
+    const m = location.hash.match(/#test=([-\d.]+),([-\d.]+)/);
+    if (m) { la = +m[1]; lo = +m[2]; }
+    const h = horizon(lo, la);
     let minC = 1e9;
     for (const s of D.track) {
       const i = Math.round(s[0]) - AZS[0];
@@ -243,7 +266,7 @@ loadRaster().then(() => {
     }
     document.title = "T=" + JSON.stringify([+h.elev.toFixed(1),
       +h.bare[118].toFixed(2), +h.veg[118].toFixed(2), +minC.toFixed(2)]);
-    showPoint(D.origin[0], D.origin[1], "Origin");
+    showPoint(la, lo, "Test");
   }
 });
 
@@ -255,6 +278,12 @@ function bilinear(g, lon, lat, kind){
   return A[i]*(1-fc)*(1-fr) + A[i+1]*fc*(1-fr) + A[i+g.w]*(1-fc)*fr + A[i+g.w+1]*fc*fr;
 }
 function sample(lon, lat, d, kind){
+  if (kind === "b") {
+    const g = G.bld;
+    const col = (lon - g.lon0) / g.resLon, row = (g.lat0 - lat) / g.resLat;
+    if (col < 0 || row < 0 || col > g.w - 1 || row > g.h - 1) return 0;
+    return bilinear(g, lon, lat, "b");
+  }
   // fine ring near the observer, coarse beyond
   if (d <= D.inner_km * 1000) {
     const g = G.inner;
@@ -289,8 +318,9 @@ function horizon(lon, lat){
       const t = sample(slon, slat, d, "t");
       const a1 = Math.atan2(t - hObs - DROP[ri], d) * 57.29578;
       if (a1 > mb) mb = a1;
-      const c = sample(slon, slat, d, "c");
-      const a2 = Math.atan2(t + 0.5*c - hObs - DROP[ri], d) * 57.29578;
+      const o = Math.max(0.5 * sample(slon, slat, d, "c"),
+                         sample(slon, slat, d, "b"));
+      const a2 = Math.atan2(t + o - hObs - DROP[ri], d) * 57.29578;
       if (a2 > mv) mv = a2;
     }
     bare[ai] = mb; vegh[ai] = mv;
@@ -306,6 +336,7 @@ function showPoint(lat, lon, label){
     const t0 = performance.now();
     const h = horizon(lon, lat);
     const ms = Math.round(performance.now() - t0);
+    const b0 = sample(lon, lat, 0, "b");
     // clearances over the sun track
     let minC = 1e9, maxVeg = -90, maxBare = -90;
     for (const s of D.track) {
@@ -326,12 +357,16 @@ function showPoint(lat, lon, label){
         <span>Horizon towards sun</span><b>${maxVeg.toFixed(2)}° (bare ${maxBare.toFixed(2)}°)</b>
         <span>Computed in</span><b>${ms} ms</b>
       </div>
+      ${b0 > 0.5 ? `<p style="color:#b3261e"><b>⚠ click point is inside a mapped building ` +
+        `(~${Math.round(b0)} m)</b> — horizon indicative only.</p>` : ""}
       <a class="btn" target="_blank" href="${gmap}">Directions (Google Maps)</a>
       <a class="btn alt" target="_blank" href="${osmL}">OpenStreetMap</a>
       <div id="chart"></div>
       <p class="muted">Brown fill: bare-terrain horizon. Green: incl. modelled canopy
-      (30 m Hansen). Orange: sun track (UTC labels). Gold band: eclipse azimuth sector.
-      Fine (30 m) detail within ${D.inner_km} km of origin; buildings not modelled.</p>`;
+      (30 m Hansen) and OSM buildings/hedges (10 m, tagged or default heights),
+      combined as the worse obstacle. Orange: sun track (UTC labels). Gold band:
+      eclipse azimuth sector. Fine (30 m) terrain detail within ${D.inner_km} km of
+      origin; buildings/hedges modelled in the inner region only.</p>`;
     drawChart(h);
     document.getElementById("panel").classList.add("open");
     document.getElementById("busy").style.display = "none";
