@@ -49,72 +49,83 @@ def build_tiles(verbose: bool = True):
                 levels=[dict(m=l["m"], resLon=l["resLon"], resLat=l["resLat"])
                         for l in levels()])
     w0, s0, e0, n0 = GB_BBOX
-    written = 0
-    for lat in range(int(s0), int(n0)):
-        for lon in range(int(w0), int(e0)):
-            tname = tile_name(lat, lon)
-            dest = DEMO_DIR / f"cop30_{tname}.tif"
+    dems: dict[tuple[int, int], Dem | None] = {}
+    vegs: dict[tuple[int, int], Veg | None] = {}
+
+    def get_dem(cell):
+        if cell not in dems:
+            lat, lon = cell
+            dest = DEMO_DIR / f"cop30_{tile_name(lat, lon)}.tif"
             if not dest.exists():
                 url = cop30_tile_url(lat, lon)
                 import requests
-                head = requests.head(url, timeout=30)
-                if head.status_code != 200:
-                    continue  # sea cell
+                if requests.head(url, timeout=30).status_code != 200:
+                    dems[cell] = None
+                    return None
                 _download(url, dest)
-            dem = Dem(dest)
-            if float(np.nanmax(dem.a)) <= 0:
-                continue  # all-sea cell
+            dems[cell] = Dem(dest)
+            if len(dems) > 6:
+                dems.pop(next(iter(dems)))
+        return dems[cell]
+
+    def get_veg(cell):
+        if cell not in vegs:
+            lat, lon = cell
             try:
-                veg = Veg.for_bbox((lon, lat, lon + 1, lat + 1), verbose=False)
-                if veg.h_can.size == 0:
-                    veg = None
-            except Exception as e:  # noqa: BLE001
-                if verbose:
-                    print(f"[tiles] no veg for {tname}: {e}")
-                veg = None
-            for lv in levels():
-                written += _cell_tiles(dem, veg, lv, out, verbose)
-            if verbose:
-                print(f"[tiles] cell {tname} done ({written} tiles)")
+                v = Veg.for_bbox((lon, lat, lon + 1, lat + 1), verbose=False)
+                vegs[cell] = v if v.h_can.size else None
+            except Exception:  # noqa: BLE001
+                vegs[cell] = None
+            if len(vegs) > 6:
+                vegs.pop(next(iter(vegs)))
+        return vegs[cell]
+
+    written = 0
+    cc = np.arange(TILE) + 0.5
+    for lv in levels():
+        ix0 = int(np.floor((w0 - LON0) / (TILE * lv["resLon"])))
+        ix1 = int(np.floor((e0 - LON0) / (TILE * lv["resLon"])))
+        iy0 = int(np.floor((LAT0 - n0) / (TILE * lv["resLat"])))
+        iy1 = int(np.floor((LAT0 - s0) / (TILE * lv["resLat"])))
+        for iy in range(iy0, iy1 + 1):
+            for ix in range(ix0, ix1 + 1):
+                w, s, e, n = _tile_bounds(ix, iy, lv)
+                lons = LON0 + (ix * TILE + cc) * lv["resLon"]
+                lats = LAT0 - (iy * TILE + cc) * lv["resLat"]
+                LON, LAT = np.meshgrid(lons, lats)
+                t = np.zeros((TILE, TILE), np.float64)
+                c = np.zeros((TILE, TILE), np.float64)
+                hit = np.zeros((TILE, TILE), bool)
+                for cla in (int(np.floor(s)), int(np.floor(n))):
+                    for clo in (int(np.floor(w)), int(np.floor(e))):
+                        dem = get_dem((cla, clo))
+                        if dem is None:
+                            continue
+                        col, row = dem.lonlat_to_px(LON, LAT)
+                        ok = (col >= 0) & (row >= 0) & (col <= dem.w - 1) \
+                            & (row <= dem.h - 1) & ~hit
+                        if not ok.any():
+                            continue
+                        t[ok] = dem.sample_bilinear(
+                            np.clip(col, 0, dem.w - 1)[ok],
+                            np.clip(row, 0, dem.h - 1)[ok])
+                        veg = get_veg((cla, clo))
+                        if veg is not None:
+                            c[ok] = veg.canopy_at(LON[ok], LAT[ok])
+                        hit |= ok
+                t = np.where(hit, t, 0).astype("<i2")
+                c = np.clip(np.round(np.where(hit, c, 0)), 0, 255).astype(np.uint8)
+                if t.max() <= 0 and c.max() <= 0:
+                    continue
+                d = out / str(lv["m"])
+                d.mkdir(parents=True, exist_ok=True)
+                (d / f"{ix}_{iy}.gz").write_bytes(
+                    gzip.compress(t.tobytes() + c.tobytes(), 6))
+                written += 1
+            if verbose and iy % 5 == 0:
+                print(f"[tiles] {lv['m']} m row {iy}/{iy1} ({written} tiles)")
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     if verbose:
         total = sum(p.stat().st_size for p in out.rglob("*.gz"))
         print(f"[tiles] wrote {written} tiles, {total/1e6:.1f} MB gzipped")
-    return written
-
-
-def _cell_tiles(dem: Dem, veg: Veg | None, lv: dict, out: pathlib.Path,
-                verbose: bool) -> int:
-    written = 0
-    # tile index range intersecting this 1-deg cell
-    ix0 = int(np.floor((dem.lon0 - LON0) / (TILE * lv["resLon"])))
-    ix1 = int(np.floor((dem.lon0 + dem.w * dem.res - LON0) / (TILE * lv["resLon"])))
-    iy0 = int(np.floor((LAT0 - dem.lat0) / (TILE * lv["resLat"])))
-    iy1 = int(np.floor((LAT0 - (dem.lat0 - dem.h * dem.res_lat)) / (TILE * lv["resLat"])))
-    cc = np.arange(TILE) + 0.5
-    for ix in range(ix0, ix1 + 1):
-        for iy in range(iy0, iy1 + 1):
-            w, s, e, n = _tile_bounds(ix, iy, lv)
-            lons = LON0 + (ix * TILE + cc) * lv["resLon"]
-            lats = LAT0 - (iy * TILE + cc) * lv["resLat"]
-            LON, LAT = np.meshgrid(lons, lats)
-            col, row = dem.lonlat_to_px(LON, LAT)
-            ok = (col >= 0) & (row >= 0) & (col <= dem.w - 1) & (row <= dem.h - 1)
-            if not ok.any():
-                continue
-            t = dem.sample_bilinear(np.clip(col, 0, dem.w - 1),
-                                    np.clip(row, 0, dem.h - 1))
-            t = np.where(ok, t, 0).astype("<i2")
-            if veg is not None:
-                c = np.where(ok, veg.canopy_at(LON, LAT), 0)
-                c = np.clip(np.round(c), 0, 255).astype(np.uint8)
-            else:
-                c = np.zeros((TILE, TILE), np.uint8)
-            if t.max() <= 0 and c.max() <= 0:
-                continue
-            d = out / str(lv["m"])
-            d.mkdir(parents=True, exist_ok=True)
-            (d / f"{ix}_{iy}.gz").write_bytes(
-                gzip.compress(t.tobytes() + c.tobytes(), 6))
-            written += 1
     return written
