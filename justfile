@@ -55,6 +55,27 @@ report:  ## final REPORT_<name>.md + final plots (run refine first)
 webmap:  ## interactive HTML map, all candidates + horizon profiles
     {{run}} webmap
 
+tiles:  ## build UK tile pyramid into pages/tiles (long: downloads + ~20 min)
+    {{run}} tiles
+
+ukmap:  ## write pages/index.html (UK-wide explorer)
+    {{run}} ukmap
+
+serve-pages:  ## local preview of pages/ at :8000
+    python3 -m http.server 8000 -d pages
+
+ghrepo:  ## create the GitHub repo + push main (needs gh auth)
+    gh repo create sebbacon/eclipse-finder --public --source=. --remote=origin --push
+
+publish:  ## force-push pages/ as the gh-pages branch (needs gh auth)
+    @test -f pages/tiles/meta.json || { echo "run just tiles && just ukmap first"; exit 1; }
+    rm -rf /tmp/efpages && mkdir -p /tmp/efpages && cp -R pages/. /tmp/efpages/
+    cd /tmp/efpages && git init -q -b gh-pages && git add -A && \
+      git -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
+      commit -q -m "UK eclipse explorer + tile pyramid" && \
+      git push -q -f "https://x-access-token:$(gh auth token)@github.com/sebbacon/eclipse-finder.git" gh-pages
+    @echo "Pages: https://sebbacon.github.io/eclipse-finder/"
+
 smoke:  ## fast iteration: small radius, coarse grid
     RADIUS=15 GRID=600 TOP=5 just search
     RADIUS=15 TOP=3 just plot

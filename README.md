@@ -132,6 +132,17 @@ building shows a warning. Cross-checked against the server pipeline
 (bare terrain ~0.1°; urban green line correctly jumps to ~11° in central
 Manchester where the server model has no buildings).
 
+## UK-wide explorer on GitHub Pages
+
+`just tiles` builds a country-wide two-level tile pyramid into `pages/tiles/`
+(60 m terrain+canopy to 15 km, 180 m beyond; ~150 MB gzipped; ~1-3 MB fetched
+per click, cached in the browser). `just ukmap` writes `pages/index.html`:
+click anywhere in GB for the same in-browser horizon, with sun tracks
+interpolated per lat/lon. Buildings are not in the UK pyramid (use the
+per-origin bundles for those). Serve locally with `just serve-pages`;
+publish with `just ghrepo` once, then `just publish` (force-pushes `pages/`
+to an orphan `gh-pages` branch; site at sebbacon.github.io/eclipse-finder).
+
 ## Data sources & attribution
 
 - **Eclipse/sun geometry**: Skyfield + JPL DE421 (cross-checked with

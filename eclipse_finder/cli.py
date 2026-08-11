@@ -144,6 +144,16 @@ def cmd_plot(a):
         print(f"wrote {outp}")
 
 
+def cmd_ukmap(a):
+    from .ukwebmap import build_ukmap
+    build_ukmap(a.date)
+
+
+def cmd_tiles(a):
+    from .tiles import build_tiles
+    build_tiles()
+
+
 def cmd_webmap(a):
     from .webmap import build_webmap
     build_webmap(a.name)
@@ -229,6 +239,10 @@ def main():
 
     s = sub.add_parser("plot"); s.set_defaults(fn=cmd_plot)
     s.add_argument("--top", type=int, default=5)
+
+    s = sub.add_parser("ukmap"); s.set_defaults(fn=cmd_ukmap)
+
+    s = sub.add_parser("tiles"); s.set_defaults(fn=cmd_tiles)
 
     s = sub.add_parser("webmap"); s.set_defaults(fn=cmd_webmap)
 

@@ -12,4 +12,7 @@ data/
 nohup.out
 .DS_Store
 
+# GitHub-Pages site (tiles + UK explorer) lives on the gh-pages branch, not main
+pages/
+
 # NOTE: output/ (reports, CSVs, plots) IS committed — it is the deliverable.
