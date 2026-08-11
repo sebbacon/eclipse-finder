@@ -71,13 +71,17 @@ serve-pages:  ## local preview of pages/ at :8000
 ghrepo:  ## create the GitHub repo + push main (needs gh auth)
     gh repo create sebbacon/eclipse-finder --public --source=. --remote=origin --push
 
-publish:  ## force-push pages/ as the gh-pages branch (needs gh auth)
+publish:  ## push pages/ to gh-pages (diff-only after first run; needs gh auth)
     @test -f pages/tiles/meta.json || { echo "run just tiles && just ukmap first"; exit 1; }
-    rm -rf /tmp/efpages && mkdir -p /tmp/efpages && cp -R pages/. /tmp/efpages/
-    cd /tmp/efpages && git init -q -b gh-pages && git add -A && \
-      git -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
-      commit -q -m "UK eclipse explorer + tile pyramid" && \
-      git push -q -f "https://x-access-token:$(gh auth token)@github.com/sebbacon/eclipse-finder.git" gh-pages
+    @if [ ! -d .deploy/.git ]; then \
+      git clone -q --depth 1 -b gh-pages "https://x-access-token:$(gh auth token)@github.com/sebbacon/eclipse-finder.git" .deploy; \
+    fi
+    rsync -a --delete --exclude=.git pages/ .deploy/
+    cd .deploy && git add -A && \
+      (git diff --cached --quiet || \
+       git -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
+       commit -q -m "update UK explorer") && \
+      git push -q origin gh-pages
     @echo "Pages: https://sebbacon.github.io/eclipse-finder/"
 
 smoke:  ## fast iteration: small radius, coarse grid

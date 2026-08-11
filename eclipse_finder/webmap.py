@@ -163,7 +163,8 @@ _HTML = r"""<!doctype html>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
  html,body{margin:0;height:100%;font:13px/1.45 system-ui,sans-serif}
- #map{position:absolute;top:0;left:0;right:0;bottom:0;cursor:crosshair}
+ #map{position:absolute;top:0;left:0;right:0;bottom:0;
+   cursor:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><circle cx='15' cy='15' r='9' fill='none' stroke='%23d32f2f' stroke-width='3'/><line x1='15' y1='0' x2='15' y2='10' stroke='%23d32f2f' stroke-width='3'/><line x1='15' y1='20' x2='15' y2='30' stroke='%23d32f2f' stroke-width='3'/><line x1='0' y1='15' x2='10' y2='15' stroke='%23d32f2f' stroke-width='3'/><line x1='20' y1='15' x2='30' y2='15' stroke='%23d32f2f' stroke-width='3'/></svg>") 15 15, crosshair}
  #panel{position:absolute;top:0;right:0;bottom:0;width:min(480px,92vw);
    background:#fff;box-shadow:-2px 0 8px rgba(0,0,0,.25);overflow-y:auto;
    transform:translateX(100%);transition:transform .18s;padding:14px 16px;
@@ -231,7 +232,8 @@ D.sites.forEach(s => {
 document.getElementById("legend").innerHTML =
   `<b>${D.name}</b> — eclipse ${D.date}, biggest around ${bstLabel(D.t_max)} UK time.<br>` +
   `Click anywhere to check the view from that spot (drag to move, scroll to zoom). ` +
-  `Coloured dots = the best ranked spots (green = best).`;
+  `Coloured dots = the best ranked spots (green = best). ` +
+  `<a href="https://bacon.boutique" target="_blank">by Seb</a>`;
 
 // ---------------------------------------------------------- raster decode --
 let G = null;  // parsed raster grids
@@ -345,6 +347,10 @@ function bstLabel(hhmm){
 }
 function showPoint(lat, lon, label){
   if (!G) return;
+  clickMark = clickMark
+    ? clickMark.setLatLng([lat, lon])
+    : L.circleMarker([lat, lon], {radius: 9, color: "#fff", weight: 3,
+        fillColor: "#d32f2f", fillOpacity: 1, interactive: false}).addTo(map);
   document.getElementById("busy").style.display = "block";
   setTimeout(() => {
     const t0 = performance.now();
@@ -395,6 +401,7 @@ function showPoint(lat, lon, label){
   }, 30);
 }
 map.on("click", e => showPoint(e.latlng.lat, e.latlng.lng, "Clicked point"));
+let clickMark = null;
 function closePanel(){ document.getElementById("panel").classList.remove("open"); }
 
 function drawChart(h){

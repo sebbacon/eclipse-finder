@@ -14,5 +14,6 @@ nohup.out
 
 # GitHub-Pages site (tiles + UK explorer) lives on the gh-pages branch, not main
 pages/
+.deploy/
 
 # NOTE: output/ (reports, CSVs, plots) IS committed — it is the deliverable.

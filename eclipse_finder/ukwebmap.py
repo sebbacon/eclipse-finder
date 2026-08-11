@@ -59,7 +59,8 @@ _HTML = r"""<!doctype html>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
  html,body{margin:0;height:100%;font:14px/1.5 system-ui,sans-serif}
- #map{position:absolute;top:0;left:0;right:0;bottom:0;cursor:crosshair}
+ #map{position:absolute;top:0;left:0;right:0;bottom:0;
+   cursor:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><circle cx='15' cy='15' r='9' fill='none' stroke='%23d32f2f' stroke-width='3'/><line x1='15' y1='0' x2='15' y2='10' stroke='%23d32f2f' stroke-width='3'/><line x1='15' y1='20' x2='15' y2='30' stroke='%23d32f2f' stroke-width='3'/><line x1='0' y1='15' x2='10' y2='15' stroke='%23d32f2f' stroke-width='3'/><line x1='20' y1='15' x2='30' y2='15' stroke='%23d32f2f' stroke-width='3'/></svg>") 15 15, crosshair}
  #panel{position:absolute;top:0;right:0;bottom:0;width:min(480px,92vw);
    background:#fff;box-shadow:-2px 0 8px rgba(0,0,0,.25);overflow-y:auto;
    transform:translateX(100%);transition:transform .18s;padding:14px 16px;
@@ -104,7 +105,11 @@ _HTML = r"""<!doctype html>
   <p><b>Click the map</b> — or search a town or postcode — to see whether the
   eclipse will be visible from that exact spot.<br>
   <b>Drag</b> to move around. <b>Scroll</b> to zoom in and out.</p>
+  <p class="muted">⚠️ This is a hobby project built from public map data and I
+  make no promises it’s accurate. If you travel hundreds of miles based on it,
+  that’s at your own risk!</p>
   <button onclick="dismissIntro()">Got it</button>
+  <p class="muted"><a href="https://bacon.boutique" target="_blank">by Seb</a></p>
 </div>
 <div id="panel"><span id="close" onclick="closePanel()">✕</span><div id="pbody"></div></div>
 <script>
@@ -121,7 +126,8 @@ L.control.layers({"Terrain map": terrain, "Street map": streets}).addTo(map);
 document.getElementById("legend").innerHTML =
   `<b>Click the map</b> to check the eclipse view from that spot · ` +
   `<b>drag</b> to move · <b>scroll</b> to zoom. We work out whether hills, ` +
-  `trees and buildings get in the way of the sun.`;
+  `trees and buildings get in the way of the sun. ` +
+  `<a href="https://bacon.boutique" target="_blank">by Seb</a>`;
 
 // --------------------------------------------------------- first-load card
 function dismissIntro(){
@@ -408,8 +414,13 @@ function horizon(lon, lat, bldS){
 
 // ------------------------------------------------------------------ panel --
 map.on("click", e => showAt(e.latlng.lat, e.latlng.lng));
+let clickMark = null;
 async function showAt(lat, lon, label){
   dismissIntro();
+  clickMark = clickMark
+    ? clickMark.setLatLng([lat, lon])
+    : L.circleMarker([lat, lon], {radius: 9, color: "#fff", weight: 3,
+        fillColor: "#d32f2f", fillOpacity: 1, interactive: false}).addTo(map);
   document.getElementById("busy").style.display = "block";
   const kb0 = fetchedBytes;
   await ensure(lon, lat);
