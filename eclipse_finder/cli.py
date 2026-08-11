@@ -149,6 +149,11 @@ def cmd_ukmap(a):
     build_ukmap(a.date)
 
 
+def cmd_bldtiles(a):
+    from .buildings import build_bld_tiles
+    build_bld_tiles()
+
+
 def cmd_tiles(a):
     from .tiles import build_tiles
     build_tiles()
@@ -241,6 +246,8 @@ def main():
     s.add_argument("--top", type=int, default=5)
 
     s = sub.add_parser("ukmap"); s.set_defaults(fn=cmd_ukmap)
+
+    s = sub.add_parser("bldtiles"); s.set_defaults(fn=cmd_bldtiles)
 
     s = sub.add_parser("tiles"); s.set_defaults(fn=cmd_tiles)
 

@@ -58,6 +58,10 @@ webmap:  ## interactive HTML map, all candidates + horizon profiles
 tiles:  ## build UK tile pyramid into pages/tiles (long: downloads + ~20 min)
     {{run}} tiles
 
+bldtiles:  ## hosted 10 m building/hedge tiles (needs gb_loc PBF; ~20 min)
+    @test -f data/osm/gb_loc.osm.pbf || osmium add-locations-to-ways -i sparse_file_array data/osm/great-britain.osm.pbf -o data/osm/gb_loc.osm.pbf
+    {{run}} bldtiles
+
 ukmap:  ## write pages/index.html (UK-wide explorer)
     {{run}} ukmap
 

@@ -11,11 +11,14 @@ inner region. Relations (multipolygon buildings) are skipped in v1.
 """
 from __future__ import annotations
 
+import gzip
+import json
 import pathlib
 import pickle
 
 import numpy as np
 import osmium
+from matplotlib.path import Path
 
 from .osm_local import PBF_PATH
 
@@ -164,3 +167,146 @@ def rasterize(vec: dict, lon0: float, lat0: float, w: int, h: int,
                 if 0 <= c < w and 0 <= r < h and out[r, c] < hh:
                     out[r, c] = hh
     return out
+
+
+# ------------------------------------------------- hosted 10 m UK layer ----
+def build_bld_tiles(verbose: bool = True):
+    """Rasterise GB buildings+hedges at 10 m into pages/tiles/bld/ (sparse,
+    gzip) + bld_manifest.json. Single pass over the location-augmented PBF
+    (osmium add-locations-to-ways), LRU of per-1-degree cell rasters."""
+    from collections import OrderedDict
+    from types import SimpleNamespace
+    from .tiles import LON0, LAT0, TILE, OUTPUT_DIR as PAGES_DIR
+
+    loc_pbf = PBF_PATH.parent / "gb_loc.osm.pbf"
+    if not loc_pbf.exists():
+        raise RuntimeError("run: osmium add-locations-to-ways -i sparse_file_array "
+                           f"{PBF_PATH} -o {loc_pbf}")
+
+    resLon, resLat = B_RES_M / 65_578.0, B_RES_M / 111_306.0
+    out = PAGES_DIR / "tiles" / "bld"
+    out.mkdir(parents=True, exist_ok=True)
+    manifest: set[str] = set()
+    cache: "OrderedDict[tuple[int,int], SimpleNamespace]" = OrderedDict()
+    state = {"ways": 0}
+
+    def flush(key, C):
+        ny, nx = C.arr.shape
+        for ty in range(ny // TILE):
+            for tx in range(nx // TILE):
+                sub = C.arr[ty*TILE:(ty+1)*TILE, tx*TILE:(tx+1)*TILE]
+                if sub.max() == 0:
+                    continue
+                p = out / f"{C.ix0+tx}_{C.iy0+ty}.gz"
+                if p.exists():  # merge: cell may have been evicted & re-stamped
+                    old = np.frombuffer(gzip.decompress(p.read_bytes()),
+                                        np.uint8).reshape(TILE, TILE)
+                    np.maximum(sub, old, out=sub)
+                p.write_bytes(gzip.compress(sub.tobytes(), 6))
+                manifest.add(f"{C.ix0+tx}_{C.iy0+ty}")
+
+    def cell_for(lat: float, lon: float):
+        key = (int(np.floor(lat)), int(np.floor(lon)))
+        if key in cache:
+            cache.move_to_end(key)
+            return cache[key]
+        if len(cache) >= 16:
+            flush(*cache.popitem(last=False))
+        la0, lo0 = key
+        ix0 = int(np.floor((lo0 - LON0) / (resLon * TILE)))
+        ix1 = int(np.floor((lo0 + 1 - LON0) / (resLon * TILE) - 1e-9))
+        iy0 = int(np.floor((LAT0 - (la0 + 1)) / (resLat * TILE)))
+        iy1 = int(np.floor((LAT0 - la0) / (resLat * TILE) - 1e-9))
+        C = SimpleNamespace(arr=np.zeros(((iy1-iy0+1)*TILE, (ix1-ix0+1)*TILE),
+                                         np.uint8), ix0=ix0, iy0=iy0)
+        cache[key] = C
+        return C
+
+    def stamp_poly(C, pts, hgt):
+        xs = np.array([p[0] for p in pts]); ys = np.array([p[1] for p in pts])
+        gx = (xs - LON0) / resLon - C.ix0 * TILE
+        gy = (LAT0 - ys) / resLat - C.iy0 * TILE
+        c0, c1 = int(gx.min()) - 1, int(gx.max()) + 2
+        r0, r1 = int(gy.min()) - 1, int(gy.max()) + 2
+        H, W = C.arr.shape
+        c0, r0 = max(0, c0), max(0, r0)
+        c1, r1 = min(W, c1), min(H, r1)
+        if c1 <= c0 or r1 <= r0:
+            return
+        if c1 - c0 <= 3 and r1 - r0 <= 3:  # tiny footprint: centre pixel
+            cx_, cy_ = int((c0 + c1) / 2), int((r0 + r1) / 2)
+            if C.arr[cy_, cx_] < hgt:
+                C.arr[cy_, cx_] = hgt
+            return
+        cc, rr = np.meshgrid(np.arange(c0, c1), np.arange(r0, r1))
+        lons = LON0 + (C.ix0 * TILE + cc + 0.5) * resLon
+        lats = LAT0 - (C.iy0 * TILE + rr + 0.5) * resLat
+        mask = Path(pts).contains_points(
+            np.column_stack([lons.ravel(), lats.ravel()])).reshape(rr.shape[0], cc.shape[1])
+        sub = C.arr[r0:r1, c0:c1]
+        np.maximum(sub, np.where(mask, hgt, sub), out=sub)
+
+    def stamp_line(C, pts, hgt):
+        arr = np.asarray(pts)
+        for (lo1, la1), (lo2, la2) in zip(arr, arr[1:]):
+            d = np.hypot((lo2 - lo1) * 65_578, (la2 - la1) * 111_306)
+            n = max(1, int(d / (B_RES_M * 0.7)))
+            gx = (lo1 + (lo2 - lo1) * np.linspace(0, 1, n + 1) - LON0) / resLon - C.ix0 * TILE
+            gy = (LAT0 - (la1 + (la2 - la1) * np.linspace(0, 1, n + 1))) / resLat - C.iy0 * TILE
+            for x, y in zip(gx, gy):
+                c, r = int(x), int(y)
+                if 0 <= c < C.arr.shape[1] and 0 <= r < C.arr.shape[0] \
+                        and C.arr[r, c] < hgt:
+                    C.arr[r, c] = hgt
+
+    class H(osmium.SimpleHandler):
+        def way(self, w):
+            t = w.tags
+            if t.get("building") not in (None, "no"):
+                hgt = int(round(_height_m(t, DEFAULT_B_H)))
+                kind = "b"
+            elif t.get("natural") == "hedge" or t.get("barrier") == "hedge":
+                hgt = int(DEFAULT_H_H)
+                kind = "h"
+            else:
+                return
+            coords = []
+            for n in w.nodes:
+                if not n.location.valid():
+                    return
+                coords.append((n.location.lon, n.location.lat))
+            if len(coords) < (3 if kind == "b" else 2):
+                return
+            state["ways"] += 1
+            if verbose and state["ways"] % 1_000_000 == 0:
+                print(f"[bldtiles] {state['ways']//1_000_000}M ways …", flush=True)
+            if kind == "b":
+                if coords[0] != coords[-1]:
+                    coords = coords + [coords[0]]
+                la, lo = coords[0][1], coords[0][0]
+                stamp_poly(cell_for(la, lo), coords, hgt)
+            else:
+                done = set()
+                for lo, la in coords:
+                    k = (int(np.floor(la)), int(np.floor(lo)))
+                    if k in done:
+                        continue
+                    done.add(k)
+                    stamp_line(cell_for(la, lo), coords, hgt)
+
+    if verbose:
+        print("[bldtiles] single pass over gb_loc.osm.pbf …")
+    H().apply_file(str(loc_pbf))
+    for key, C in cache.items():
+        flush(key, C)
+    (PAGES_DIR / "tiles" / "bld_manifest.json").write_text(
+        json.dumps(sorted(manifest)))
+    meta_path = PAGES_DIR / "tiles" / "meta.json"
+    meta = json.loads(meta_path.read_text())
+    meta["bld"] = dict(resLon=resLon, resLat=resLat, d_bld=2000)
+    meta_path.write_text(json.dumps(meta, indent=1))
+    if verbose:
+        total = sum(p.stat().st_size for p in out.glob("*.gz"))
+        print(f"[bldtiles] {state['ways']:,} ways -> {len(manifest):,} tiles, "
+              f"{total/1e6:.1f} MB")
+    return len(manifest)

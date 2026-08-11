@@ -99,7 +99,7 @@ document.getElementById("legend").innerHTML =
   `<b>UK eclipse horizon explorer</b> — ${D.date} (partial eclipse, mag ${D.tracks.mag}). ` +
   `Click anywhere: horizon computed in your browser from fetched terrain tiles ` +
   `(60 m to 15 km, 180 m beyond). Trees modelled (30 m Hansen); buildings and ` +
-  `hedges fetched live from OSM within 2 km of the click (when Overpass responds).`;
+  `hedges from hosted OSM 10 m layer (live OSM fallback where not covered).`;
 
 // ------------------------------------------------------------ sun tracks --
 function sunTrack(lat, lon){
@@ -171,6 +171,54 @@ async function ensure(lon, lat){
         if (!TC.has(lv.m + "/" + ix + "_" + iy)) jobs.push(tile(lv, ix, iy));
   }
   await Promise.all(jobs);
+}
+
+// ------------------------------------------- hosted 10 m building tiles ----
+const BL = M.bld || null;
+let BMAN = null;
+const BMAN_P = fetch("tiles/bld_manifest.json")
+  .then(r => r.ok ? r.json() : []).then(a => { BMAN = new Set(a); })
+  .catch(() => { BMAN = new Set(); });
+const BTC = new Map();
+async function bldTile(ix, iy){
+  const key = ix + "_" + iy;
+  if (BTC.has(key)) return BTC.get(key);
+  let u = null;
+  const r = await fetch(`tiles/bld/${key}.gz`);
+  if (r.ok) {
+    const buf = await new Response(
+      r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+    fetchedBytes += buf.byteLength;
+    u = new Uint8Array(buf);
+  }
+  BTC.set(key, u);
+  return u;
+}
+async function ensureBld(lon, lat){
+  if (!BL || !BMAN) return false;
+  const d = BL.d_bld || 2000;
+  const mLon = 111412.84 * Math.cos(lat*Math.PI/180), mLat = 111132.954;
+  const tw = BL.resLon * M.tile, th = BL.resLat * M.tile;
+  const ix0 = Math.floor((lon - d/mLon - M.lon0) / tw), ix1 = Math.floor((lon + d/mLon - M.lon0) / tw);
+  const iy0 = Math.floor((M.lat0 - lat - d/mLat) / th), iy1 = Math.floor((M.lat0 - lat + d/mLat) / th);
+  let any = false; const jobs = [];
+  for (let ix = ix0; ix <= ix1; ix++)
+    for (let iy = iy0; iy <= iy1; iy++)
+      if (BMAN.has(ix + "_" + iy)) { any = true; jobs.push(bldTile(ix, iy)); }
+  await Promise.all(jobs);
+  return any;
+}
+function sampleBldHost(lon, lat){
+  if (!BL) return 0;
+  const fx = (lon - M.lon0) / BL.resLon, fy = (M.lat0 - lat) / BL.resLat;
+  const ix = Math.floor(fx / M.tile), iy = Math.floor(fy / M.tile);
+  const u = BTC.get(ix + "_" + iy);
+  if (!u) return 0;
+  const x = Math.min(Math.max(fx - ix*M.tile - 0.5, 0), M.tile - 1.001);
+  const y = Math.min(Math.max(fy - iy*M.tile - 0.5, 0), M.tile - 1.001);
+  const c0 = Math.floor(x), r0 = Math.floor(y), fc = x - c0, fr = y - r0;
+  const i = r0 * M.tile + c0;
+  return u[i]*(1-fc)*(1-fr) + u[i+1]*fc*(1-fr) + u[i+M.tile]*(1-fc)*fr + u[i+M.tile+1]*fc*fr;
 }
 
 // ------------------------------------------------- live OSM buildings ----
@@ -248,7 +296,7 @@ const RANGES = (() => { const r = [];
 const DROP = RANGES.map(d => d*d / (2*6371000) * (1 - 0.13));
 const AZS = (() => { const a = []; for (let x = 140; x <= 370; x += 1) a.push(x); return a; })();
 
-function horizon(lon, lat, bld){
+function horizon(lon, lat, bldS){
   const mLon = 111412.84 * Math.cos(lat*Math.PI/180) - 93.5 * Math.cos(3*lat*Math.PI/180);
   const mLat = 111132.954 - 559.822 * Math.cos(2*lat*Math.PI/180)
              + 1.175 * Math.cos(4*lat*Math.PI/180);
@@ -267,7 +315,7 @@ function horizon(lon, lat, bld){
       const a1 = Math.atan2(h - hObs - DROP[ri], d) * 57.29578;
       if (a1 > mb) mb = a1;
       const c = sampleAt(lv, t, slon, slat, "c");
-      const o = Math.max(0.5*c, sampleB(bld, slon, slat));
+      const o = Math.max(0.5*c, bldS ? bldS(slon, slat) : 0);
       const a2 = Math.atan2(h + o - hObs - DROP[ri], d) * 57.29578;
       if (a2 > mv) mv = a2;
     }
@@ -282,11 +330,19 @@ async function showAt(lat, lon){
   document.getElementById("busy").style.display = "block";
   const kb0 = fetchedBytes;
   await ensure(lon, lat);
-  const bld = await buildingsAt(lat, lon);
+  await BMAN_P;
+  const hosted = await ensureBld(lon, lat);
+  let bldS = null, bldLabel = "unavailable";
+  if (hosted) { bldS = sampleBldHost; bldLabel = "hosted OSM, 10 m (2 km)"; }
+  else {
+    const ob = await buildingsAt(lat, lon);
+    if (ob) { bldS = (lo, la) => sampleB(ob, lo, la);
+             bldLabel = `live OSM, ${ob.nways} ways (2 km)`; }
+  }
   const t0 = performance.now();
-  const h = horizon(lon, lat, bld);
+  const h = horizon(lon, lat, bldS);
   const ms = Math.round(performance.now() - t0);
-  const b0 = sampleB(bld, lon, lat);
+  const b0 = bldS ? bldS(lon, lat) : 0;
   const track = sunTrack(lat, lon), sec = sector(track);
   let minC = 1e9, maxVeg = -90, maxBare = -90;
   for (const s of track) {
@@ -306,7 +362,7 @@ async function showAt(lat, lon){
       <span>Min sun clearance</span><b>${minC.toFixed(2)}°</b>
       <span>Horizon towards sun</span><b>${maxVeg.toFixed(2)}° (bare ${maxBare.toFixed(2)}°)</b>
       <span>Tiles fetched</span><b>${((fetchedBytes-kb0)/1024).toFixed(0)} KB</b>
-      <span>Buildings/hedges</span><b>${bld ? `live OSM, ${bld.nways} ways (2 km)` : "unavailable (Overpass busy)"}</b>
+      <span>Buildings/hedges</span><b>${bldLabel}</b>
       <span>Computed in</span><b>${ms} ms</b>
     </div>
     ${b0 > 0.5 ? `<p style="color:#b3261e"><b>⚠ click point is inside a mapped building ` +
