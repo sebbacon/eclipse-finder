@@ -116,6 +116,19 @@ EA 1 m LiDAR was probed and is **not anonymously accessible** (JS portal,
 empty ArcGIS service directory); vegetation therefore stays Hansen-modelled
 and the report flags which sites need a ground check.
 
+## Interactive explorer (`just webmap`)
+
+`output/<name>_webmap.html` is a single self-contained file (~9 MB): ranked
+site markers plus **click-anywhere** horizon computation in the browser.
+A two-ring raster is embedded (gzip+base64): 30 m terrain + 30 m modelled
+canopy within 15 km of the origin, ~90 m beyond, out to 55 km. Each click
+computes the bare and canopy-corrected horizon (211 azimuths x 792 range
+bins, ~167k samples) in ~15 ms and draws it as SVG with the sun track,
+plus Google-Maps/OSM links. Cross-checked against the server pipeline
+(ranking metric agrees to ~0.1°; per-azimuth differences up to ~0.5° come
+from the 90 m far-field terrain and are flagged in the panel). Buildings
+and hedges are not modelled yet (stage 2: OSM rasterisation).
+
 ## Data sources & attribution
 
 - **Eclipse/sun geometry**: Skyfield + JPL DE421 (cross-checked with

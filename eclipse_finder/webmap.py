@@ -1,74 +1,115 @@
-"""Interactive HTML map: all candidates, click -> SVG horizon profile.
+"""Interactive HTML map with in-browser horizon computation.
 
-No drive-time/access modelling here — geometry only. Single self-contained
-HTML file (Leaflet from CDN, horizon arrays embedded as JSON, profiles drawn
-client-side as SVG). Each marker links to Google Maps directions.
+Click anywhere: the horizon (bare + canopy-corrected) is computed client-side
+from a bundled two-ring raster (30 m terrain+canopy within ~15 km of the
+origin, ~90 m beyond, out to 55 km). Single self-contained HTML file:
+Leaflet from CDN, raster embedded as base64 gzip.
+
+Buildings/hedges are NOT modelled yet (stage 2).
 """
 from __future__ import annotations
 
+import base64
 import csv
+import gzip
 import json
+
 import pathlib
+import struct
 
 import numpy as np
 
-from .dem import DEMO_DIR
-from .horizon import HorizonGrid, default_ranges, horizon_profile
+from .dem import DEMO_DIR, Dem
+from .horizon import _meters_per_deg
 from .solar import azimuth_sector, compute_eclipse_geometry
 from .vegetation import Veg
 
 OUTPUT_DIR = pathlib.Path(__file__).parent.parent / "output"
+INNER_RADIUS_KM = 15.0
 
-AZ0_PLOT, AZ1_PLOT = 150.0, 360.0
+
+# ---------------------------------------------------------------- raster ----
+def _raster_bytes(dem: Dem, veg: Veg, origin: tuple[float, float]) -> bytes:
+    """Two-ring terrain+canopy raster, little-endian, int16 sections first.
+
+    layout: magic 'EFR1'
+      outer grid hdr: lon0,lat0,res_lon,res_lat (f64), w,h (u32)
+      inner grid hdr: same
+      t_out int16[h*w], t_in int16[h*w], c_out u8, c_in u8
+    canopy is resampled (nearest) onto the dem grid, heights in metres (0-255).
+    """
+    lon_o, lat_o = origin
+    # canopy resampled onto dem native grid (bilinear, chunked)
+    lons = dem.lon0 + np.arange(dem.w) * dem.res
+    lats = dem.lat0 - np.arange(dem.h) * dem.res_lat
+    cc = np.clip(np.floor((lons - veg.lon0) / veg.res).astype(np.int64), 0, veg.w - 2)
+    fc = np.clip((lons - veg.lon0) / veg.res - cc, 0, 1).astype(np.float32)
+    rr = np.clip(np.floor((veg.lat0 - lats) / veg.res).astype(np.int64), 0, veg.h - 2)
+    fr = np.clip((veg.lat0 - lats) / veg.res - rr, 0, 1).astype(np.float32)
+    H = veg.h_can
+    can30 = np.empty((dem.h, dem.w), np.uint8)
+    for i in range(0, dem.h, 1024):
+        j = min(i + 1024, dem.h)
+        v = (H[np.ix_(rr[i:j], cc)] * (1 - fc) * (1 - fr[i:j, None])
+             + H[np.ix_(rr[i:j], cc + 1)] * fc * (1 - fr[i:j, None])
+             + H[np.ix_(rr[i:j] + 1, cc)] * (1 - fc) * fr[i:j, None]
+             + H[np.ix_(rr[i:j] + 1, cc + 1)] * fc * fr[i:j, None])
+        can30[i:j] = np.clip(np.round(v), 0, 255).astype(np.uint8)
+
+    t_out = dem.a[::3, ::3]
+    H, W = can30.shape
+    c_out = can30[: H // 3 * 3, : W // 3 * 3].reshape(H // 3, 3, W // 3, 3).max(axis=(1, 3))
+
+    m_lon, m_lat = _meters_per_deg(lat_o)
+    r_in = int(INNER_RADIUS_KM * 1000 / (dem.res_lat * m_lat))
+    c_in = int(INNER_RADIUS_KM * 1000 / (dem.res * m_lon))
+    oc, orow = dem.lonlat_to_px(np.asarray(lon_o), np.asarray(lat_o))
+    oc, orow = int(round(float(oc))), int(round(float(orow)))
+    r0, r1 = max(0, orow - r_in), min(dem.h, orow + r_in)
+    c0, c1 = max(0, oc - c_in), min(dem.w, oc + c_in)
+    t_in = dem.a[r0:r1, c0:c1]
+    cn_in = can30[r0:r1, c0:c1]
+
+    def hdr(lon0, lat0, rl, rt, w, h):
+        return struct.pack("<4d2I", lon0, lat0, rl, rt, w, h)
+
+    out = bytearray()
+    out += b"EFR1"
+    out += hdr(dem.lon0, dem.lat0, dem.res, dem.res_lat, t_out.shape[1], t_out.shape[0])
+    out += hdr(dem.lon0 + c0 * dem.res, dem.lat0 - r0 * dem.res_lat,
+               dem.res, dem.res_lat, t_in.shape[1], t_in.shape[0])
+    for a in (t_out, t_in):
+        out += np.ascontiguousarray(a.astype("<i2")).tobytes()
+    for a in (c_out, cn_in):
+        out += np.ascontiguousarray(a).tobytes()
+    return bytes(out)
 
 
+# ---------------------------------------------------------------- build ----
 def build_webmap(name: str, verbose: bool = True):
     meta = json.loads((OUTPUT_DIR / f"{name}_meta.json").read_text())
     with open(OUTPUT_DIR / f"{name}_candidates.csv") as f:
         rows = list(csv.DictReader(f))
 
     mr = meta.get("max_range_km", 55.0)
-    dem_path = DEMO_DIR / f"{name}_{meta['radius_km']:.0f}km_h{mr:.0f}km.tif"
-    from .dem import Dem
-    dem = Dem(dem_path)
+    dem = Dem(DEMO_DIR / f"{name}_{meta['radius_km']:.0f}km_h{mr:.0f}km.tif")
     geo = compute_eclipse_geometry(meta["lat"], meta["lon"], meta["date"])
     az0, az1 = azimuth_sector(geo, 12.0)
 
-    bbox = (dem.lon0, dem.lat0 - dem.h * dem.res_lat, dem.lon0 + dem.w * dem.res, dem.lat0)
+    bbox = (dem.lon0, dem.lat0 - dem.h * dem.res_lat,
+            dem.lon0 + dem.w * dem.res, dem.lat0)
     veg = Veg.for_bbox(bbox, verbose=verbose)
-    az_axis = np.arange(AZ0_PLOT, AZ1_PLOT + 0.5, 1.0)
-    grid = HorizonGrid.build(dem, az_axis, default_ranges(mr), meta["lat"])
 
-    sites = []
-    for i, r in enumerate(rows, 1):
-        lon, lat = float(r["lon"]), float(r["lat"])
-        bare = horizon_profile(dem, lon, lat, grid)
-        vegp = horizon_profile(dem, lon, lat, grid, veg=veg)
-        sites.append(dict(
-            rank=i, lon=lon, lat=lat, elev=round(float(r["elev"]), 1),
-            min_clear=round(float(r["min_clearance"]), 2),
-            veg_risk=round(float(r["veg_risk"]), 2),
-            tc_obs=round(float(r["tc_obs"]), 1),
-            score=round(float(r["score"]), 2),
-            bare=[round(float(x), 2) for x in bare],
-            veg=[round(float(x), 2) for x in vegp],
-        ))
-        if verbose:
-            print(f"[webmap] {i}/{len(rows)} {lat:.4f},{lon:.4f}")
+    raw = _raster_bytes(dem, veg, (meta["lon"], meta["lat"]))
+    b64 = base64.b64encode(gzip.compress(raw, 6)).decode()
+    if verbose:
+        print(f"[webmap] raster {len(raw)/1e6:.1f} MB raw -> {len(b64)/1e6:.1f} MB base64")
 
-    obare = horizon_profile(dem, meta["lon"], meta["lat"], grid)
-    oveg = horizon_profile(dem, meta["lon"], meta["lat"], grid, veg=veg)
-    oclear = min(s.alt_deg - float(np.interp(s.az_deg, az_axis, oveg))
-                 for s in geo.useful_samples)
-    origin_site = dict(
-        rank=0, lon=meta["lon"], lat=meta["lat"],
-        elev=round(float(dem.elevation_at(meta["lon"], meta["lat"])), 1),
-        min_clear=round(float(oclear), 2),
-        veg_risk=round(float(np.max(oveg - obare)), 2),
-        score=None,
-        bare=[round(float(x), 2) for x in obare],
-        veg=[round(float(x), 2) for x in oveg],
-    )
+    sites = [dict(
+        rank=i, lon=float(r["lon"]), lat=float(r["lat"]),
+        elev=round(float(r["elev"]), 1), min_clear=round(float(r["min_clearance"]), 2),
+        veg_risk=round(float(r["veg_risk"]), 2), score=round(float(r["score"]), 2),
+    ) for i, r in enumerate(rows, 1)]
 
     track = []
     for j, s in enumerate(geo.useful_samples):
@@ -79,13 +120,14 @@ def build_webmap(name: str, verbose: bool = True):
         name=name, date=meta["date"],
         origin=[meta["lat"], meta["lon"]],
         sector=[round(az0, 1), round(az1, 1)],
-        az_axis=[round(float(a), 1) for a in az_axis],
-        track=track, sites=sites, origin_site=origin_site,
+        track=track, sites=sites,
         mag=round(geo.max_magnitude, 3),
         t_max=geo.contacts["maximum"].strftime("%H:%M"),
+        inner_km=INNER_RADIUS_KM,
     )
     html = (_HTML.replace("__DATA__", json.dumps(data))
-                 .replace("__NAME__", name))
+                 .replace("__NAME__", name)
+                 .replace("__RASTER_B64__", b64))
     out = OUTPUT_DIR / f"{name}_webmap.html"
     out.write_text(html)
     print(f"wrote {out} ({out.stat().st_size/1e6:.2f} MB, {len(sites)} sites)")
@@ -100,7 +142,7 @@ _HTML = r"""<!doctype html>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
  html,body{margin:0;height:100%;font:13px/1.45 system-ui,sans-serif}
- #map{position:absolute;top:0;left:0;right:0;bottom:0}
+ #map{position:absolute;top:0;left:0;right:0;bottom:0;cursor:crosshair}
  #panel{position:absolute;top:0;right:0;bottom:0;width:min(480px,92vw);
    background:#fff;box-shadow:-2px 0 8px rgba(0,0,0,.25);overflow-y:auto;
    transform:translateX(100%);transition:transform .18s;padding:14px 16px;
@@ -108,7 +150,6 @@ _HTML = r"""<!doctype html>
  #panel.open{transform:none}
  #panel h3{margin:.2em 0 .4em}
  #panel .stats{display:grid;grid-template-columns:auto auto;gap:2px 14px;margin:.5em 0}
- #panel .stats b{font-weight:600}
  a.btn{display:inline-block;margin:4px 6px 4px 0;padding:5px 10px;border-radius:6px;
    background:#1a73e8;color:#fff;text-decoration:none;font-weight:600}
  a.btn.alt{background:#5f6368}
@@ -116,13 +157,17 @@ _HTML = r"""<!doctype html>
  .muted{color:#777}
  svg{max-width:100%}
  #legend{position:absolute;bottom:12px;left:12px;z-index:900;background:#fffc;
-   padding:6px 10px;border-radius:6px;font-size:12px}
+   padding:6px 10px;border-radius:6px;font-size:12px;max-width:46%}
+ #busy{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1100;
+   background:#333e;color:#fff;padding:6px 14px;border-radius:20px;display:none}
 </style></head><body>
 <div id="map"></div>
 <div id="legend"></div>
+<div id="busy">computing horizon…</div>
 <div id="panel"><span id="close" onclick="closePanel()">✕</span><div id="pbody"></div></div>
 <script>
 const D = __DATA__;
+const RASTER_B64 = "__RASTER_B64__";
 document.title = "Eclipse sites — " + D.name;
 
 const map = L.map("map").setView(D.origin, 9);
@@ -133,8 +178,7 @@ const topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
 topo.addTo(map);
 L.control.layers({"OpenTopoMap": topo, "OSM": osm}).addTo(map);
 
-// sun-sector wedge from origin
-(function(){
+(function(){  // sun-sector wedge
   const [la0, lo0] = D.origin, R = 60000, pts = [[la0, lo0]];
   for (let a = D.sector[0]; a <= D.sector[1]; a += 2) {
     const dlat = R * Math.cos(a*Math.PI/180) / 111320;
@@ -147,82 +191,179 @@ L.control.layers({"OpenTopoMap": topo, "OSM": osm}).addTo(map);
 
 L.marker(D.origin).addTo(map)
   .bindTooltip("origin (calc centre) — click for horizon", {direction: "right"})
-  .on("click", () => showPanel(D.origin_site));
+  .on("click", () => showPoint(D.origin[0], D.origin[1], "Origin (calc centre)"));
 
 const scores = D.sites.map(s => s.score);
 const smin = Math.min(...scores), smax = Math.max(...scores);
 function color(s){ const t = (s - smin) / (smax - smin || 1);
   return `hsl(${Math.round(140*t)}, 75%, ${Math.round(45 - 10*t)}%)`; }
-
 D.sites.forEach(s => {
   L.circleMarker([s.lat, s.lon], {radius: 7, color: "#222", weight: 1,
     fillColor: color(s.score), fillOpacity: .9})
     .bindTooltip(`#${s.rank}  ${s.elev} m  clr ${s.min_clear}°`, {direction: "top"})
-    .on("click", () => showPanel(s)).addTo(map);
+    .on("click", () => showPoint(s.lat, s.lon, `#${s.rank} (ranked site)`)).addTo(map);
 });
 
 document.getElementById("legend").innerHTML =
   `<b>${D.name}</b> — ${D.date}, max ${D.t_max} UTC (mag ${D.mag})<br>` +
-  `marker colour: geometry score ${smin.toFixed(1)} → ${smax.toFixed(1)} (green = best); ` +
-  `gold wedge = sun sector; click a marker`;
+  `click <i>anywhere</i>: horizon computed in your browser (30 m terrain+canopy within ` +
+  `${D.inner_km} km of origin, ~90 m beyond). Markers = geometry-ranked sites ` +
+  `(green = best). Buildings not modelled yet.`;
 
-function showPanel(s){
-  const gmap = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`;
-  const osmL = `https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lon}#map=15/${s.lat}/${s.lon}`;
-  document.getElementById("pbody").innerHTML = `
-    <h3>${s.rank ? "#" + s.rank : "Origin (calc centre)"} — ${s.elev} m</h3>
-    <div class="stats">
-      <span>Coordinates</span><b>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}</b>
-      <span>Min sun clearance</span><b>${s.min_clear}°</b>
-      <span>Vegetation risk</span><b>${s.veg_risk}°</b>
-      <span>Local tree cover</span><b>${s.tc_obs != null ? s.tc_obs + "%" : "–"}</b>
-      <span>Geometry score</span><b>${s.score != null ? s.score : "–"}</b>
-    </div>
-    <a class="btn" target="_blank" href="${gmap}">Directions (Google Maps)</a>
-    <a class="btn alt" target="_blank" href="${osmL}">OpenStreetMap</a>
-    <div id="chart"></div>
-    <p class="muted">Brown fill: bare-terrain horizon. Green line: horizon incl.
-    modelled canopy. Orange: sun track during eclipse (labels UTC). Gold band:
-    azimuth sector the sun occupies.</p>`;
-  drawChart(s);
-  document.getElementById("panel").classList.add("open");
+// ---------------------------------------------------------- raster decode --
+let G = null;  // parsed raster grids
+async function loadRaster(){
+  const bin = Uint8Array.from(atob(RASTER_B64), c => c.charCodeAt(0));
+  const stream = new Blob([bin]).stream()
+    .pipeThrough(new DecompressionStream("gzip"));
+  const buf = await new Response(stream).arrayBuffer();
+  const dv = new DataView(buf);
+  let off = 4;
+  function grid(){
+    const g = {lon0: dv.getFloat64(off, true), lat0: dv.getFloat64(off+8, true),
+      resLon: dv.getFloat64(off+16, true), resLat: dv.getFloat64(off+24, true),
+      w: dv.getUint32(off+32, true), h: dv.getUint32(off+36, true)};
+    off += 40; g.n = g.w * g.h; return g;
+  }
+  G = {outer: grid(), inner: grid(), buf};
+  const u8 = new Uint8Array(buf);
+  let p = off;
+  G.outer.t = new Int16Array(buf, p, G.outer.n); p += 2*G.outer.n;
+  G.inner.t = new Int16Array(buf, p, G.inner.n); p += 2*G.inner.n;
+  G.outer.c = u8.subarray(p, p + G.outer.n); p += G.outer.n;
+  G.inner.c = u8.subarray(p, p + G.inner.n);
 }
-function closePanel(){ document.getElementById("panel").classList.remove("open"); }
-if (location.hash === "#test") setTimeout(() => showPanel(D.sites[0]), 300);
-if (location.hash === "#testo") setTimeout(() => showPanel(D.origin_site), 300);
+loadRaster().then(() => {
+  if (location.hash === "#test") {
+    const h = horizon(D.origin[1], D.origin[0]);
+    let minC = 1e9;
+    for (const s of D.track) {
+      const i = Math.round(s[0]) - AZS[0];
+      if (i >= 0 && i < AZS.length && s[1] - h.veg[i] < minC) minC = s[1] - h.veg[i];
+    }
+    document.title = "T=" + JSON.stringify([+h.elev.toFixed(1),
+      +h.bare[118].toFixed(2), +h.veg[118].toFixed(2), +minC.toFixed(2)]);
+    showPoint(D.origin[0], D.origin[1], "Origin");
+  }
+});
 
-function drawChart(s){
+function bilinear(g, lon, lat, kind){
+  const col = (lon - g.lon0) / g.resLon, row = (g.lat0 - lat) / g.resLat;
+  if (col < 0 || row < 0 || col > g.w - 1 || row > g.h - 1) return 0;
+  const c0 = Math.min(Math.floor(col), g.w - 2), r0 = Math.min(Math.floor(row), g.h - 2);
+  const fc = col - c0, fr = row - r0, i = r0 * g.w + c0, A = g[kind];
+  return A[i]*(1-fc)*(1-fr) + A[i+1]*fc*(1-fr) + A[i+g.w]*(1-fc)*fr + A[i+g.w+1]*fc*fr;
+}
+function sample(lon, lat, d, kind){
+  // fine ring near the observer, coarse beyond
+  if (d <= D.inner_km * 1000) {
+    const g = G.inner;
+    const col = (lon - g.lon0) / g.resLon, row = (g.lat0 - lat) / g.resLat;
+    if (col >= 0 && row >= 0 && col <= g.w - 1 && row <= g.h - 1)
+      return bilinear(g, lon, lat, kind);
+  }
+  return bilinear(G.outer, lon, lat, kind);
+}
+
+// range bins + curvature drop (mirror eclipse_finder/horizon.py)
+const RANGES = (() => { const r = [];
+  for (let d = 30; d < 8000; d += 30) r.push(d);
+  for (let d = 8000; d < 24000; d += 60) r.push(d);
+  for (let d = 24000; d <= 55000; d += 120) r.push(d);
+  return r; })();
+const DROP = RANGES.map(d => d*d / (2*6371000) * (1 - 0.13));
+const AZS = (() => { const a = []; for (let x = 150; x <= 360; x += 1) a.push(x); return a; })();
+
+function horizon(lon, lat){
+  const mLon = 111412.84 * Math.cos(lat*Math.PI/180) - 93.5 * Math.cos(3*lat*Math.PI/180);
+  const mLat = 111132.954 - 559.822 * Math.cos(2*lat*Math.PI/180)
+             + 1.175 * Math.cos(4*lat*Math.PI/180);
+  const hObs = sample(lon, lat, 0, "t");
+  const bare = new Array(AZS.length), vegh = new Array(AZS.length);
+  for (let ai = 0; ai < AZS.length; ai++) {
+    const az = AZS[ai] * Math.PI / 180, sa = Math.sin(az), ca = Math.cos(az);
+    let mb = -90, mv = -90;
+    for (let ri = 0; ri < RANGES.length; ri++) {
+      const d = RANGES[ri];
+      const slon = lon + d * sa / mLon, slat = lat + d * ca / mLat;
+      const t = sample(slon, slat, d, "t");
+      const a1 = Math.atan2(t - hObs - DROP[ri], d) * 57.29578;
+      if (a1 > mb) mb = a1;
+      const c = sample(slon, slat, d, "c");
+      const a2 = Math.atan2(t + 0.5*c - hObs - DROP[ri], d) * 57.29578;
+      if (a2 > mv) mv = a2;
+    }
+    bare[ai] = mb; vegh[ai] = mv;
+  }
+  return {bare, veg: vegh, elev: hObs};
+}
+
+// ------------------------------------------------------------------ panel --
+function showPoint(lat, lon, label){
+  if (!G) return;
+  document.getElementById("busy").style.display = "block";
+  setTimeout(() => {
+    const t0 = performance.now();
+    const h = horizon(lon, lat);
+    const ms = Math.round(performance.now() - t0);
+    // clearances over the sun track
+    let minC = 1e9, maxVeg = -90, maxBare = -90;
+    for (const s of D.track) {
+      if (s[0] < D.sector[0] || s[0] > D.sector[1]) continue;
+      const i = Math.round(s[0]) - AZS[0];
+      const c = s[1] - h.veg[i];
+      if (c < minC) minC = c;
+      if (h.veg[i] > maxVeg) maxVeg = h.veg[i];
+      if (h.bare[i] > maxBare) maxBare = h.bare[i];
+    }
+    const gmap = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`;
+    const osmL = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`;
+    document.getElementById("pbody").innerHTML = `
+      <h3>${label} — ${h.elev.toFixed(0)} m</h3>
+      <div class="stats">
+        <span>Coordinates</span><b>${lat.toFixed(5)}, ${lon.toFixed(5)}</b>
+        <span>Min sun clearance</span><b>${minC.toFixed(2)}°</b>
+        <span>Horizon towards sun</span><b>${maxVeg.toFixed(2)}° (bare ${maxBare.toFixed(2)}°)</b>
+        <span>Computed in</span><b>${ms} ms</b>
+      </div>
+      <a class="btn" target="_blank" href="${gmap}">Directions (Google Maps)</a>
+      <a class="btn alt" target="_blank" href="${osmL}">OpenStreetMap</a>
+      <div id="chart"></div>
+      <p class="muted">Brown fill: bare-terrain horizon. Green: incl. modelled canopy
+      (30 m Hansen). Orange: sun track (UTC labels). Gold band: eclipse azimuth sector.
+      Fine (30 m) detail within ${D.inner_km} km of origin; buildings not modelled.</p>`;
+    drawChart(h);
+    document.getElementById("panel").classList.add("open");
+    document.getElementById("busy").style.display = "none";
+  }, 30);
+}
+map.on("click", e => showPoint(e.latlng.lat, e.latlng.lng, "Clicked point"));
+function closePanel(){ document.getElementById("panel").classList.remove("open"); }
+
+function drawChart(h){
   const W = 448, H = 250, mL = 34, mB = 24, mT = 8, mR = 6;
-  const az = D.az_axis;
-  const ymax = Math.max(25, ...s.bare, ...s.veg) + 3;
-  const X = a => mL + (a - az[0]) / (az[az.length-1] - az[0]) * (W - mL - mR);
+  const ymax = Math.max(25, ...h.bare, ...h.veg) + 3;
+  const X = a => mL + (a - AZS[0]) / (AZS[AZS.length-1] - AZS[0]) * (W - mL - mR);
   const Y = v => mT + (ymax - v) / (ymax + 2) * (H - mT - mB);
-  let el = "";
-  // sun sector band
-  el += `<rect x="${X(D.sector[0])}" y="${mT}" width="${X(D.sector[1])-X(D.sector[0])}"
-         height="${H-mT-mB}" fill="#ffd75e" opacity=".18"/>`;
-  // terrain fill
-  let p = `M ${X(az[0])} ${Y(-2)}`;
-  az.forEach((a,i)=> p += ` L ${X(a)} ${Y(s.bare[i])}`);
-  p += ` L ${X(az[az.length-1])} ${Y(-2)} Z`;
+  let el = `<rect x="${X(D.sector[0])}" y="${mT}" width="${X(D.sector[1])-X(D.sector[0])}"
+          height="${H-mT-mB}" fill="#ffd75e" opacity=".18"/>`;
+  let p = `M ${X(AZS[0])} ${Y(-2)}`;
+  AZS.forEach((a,i)=> p += ` L ${X(a)} ${Y(h.bare[i])}`);
+  p += ` L ${X(AZS[AZS.length-1])} ${Y(-2)} Z`;
   el += `<path d="${p}" fill="saddlebrown" opacity=".55"/>`;
-  // veg line
-  let pv = ""; az.forEach((a,i)=> pv += `${i?"L":"M"} ${X(a)} ${Y(s.veg[i])} `);
+  let pv = ""; AZS.forEach((a,i)=> pv += `${i?"L":"M"} ${X(a)} ${Y(h.veg[i])} `);
   el += `<path d="${pv}" fill="none" stroke="forestgreen" stroke-width="1.4"/>`;
-  // sun track
   let ps = ""; D.track.forEach(t => ps += `${ps?"L":"M"} ${X(t[0])} ${Y(t[1])} `);
   el += `<path d="${ps}" fill="none" stroke="tab:orange" stroke-width="1.6"/>`;
   D.track.forEach(t => { if (t[2]) el +=
     `<circle cx="${X(t[0])}" cy="${Y(t[1])}" r="2.2" fill="tab:orange"/>
      <text x="${X(t[0])}" y="${Y(t[1])-5}" font-size="8" text-anchor="middle"
        fill="#666">${t[2]}</text>`; });
-  // axes
   el += `<line x1="${mL}" y1="${Y(0)}" x2="${W-mR}" y2="${Y(0)}" stroke="#000" stroke-width=".7"/>`;
   for (let a = 180; a <= 360; a += 30)
     el += `<text x="${X(a)}" y="${H-8}" font-size="9" text-anchor="middle">${a}°</text>`;
   for (let v = 0; v <= ymax; v += 10)
     el += `<text x="${mL-4}" y="${Y(v)+3}" font-size="9" text-anchor="end">${v}°</text>`;
-  el += `<text x="${(W)/2}" y="${H-0.5}" font-size="9" text-anchor="middle" fill="#666">azimuth</text>`;
   document.getElementById("chart").innerHTML =
     `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${el}</svg>`;
 }
