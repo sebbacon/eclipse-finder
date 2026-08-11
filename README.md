@@ -135,7 +135,7 @@ Manchester where the server model has no buildings).
 ## UK-wide explorer on GitHub Pages
 
 `just tiles` builds a country-wide two-level tile pyramid into `pages/tiles/`
-(60 m terrain+canopy to 15 km, 180 m beyond; ~150 MB gzipped; ~1-3 MB fetched
+(60 m terrain+canopy to 15 km, 180 m beyond; ~110 MB gzipped; ~1-3 MB fetched
 per click, cached in the browser). `just ukmap` writes `pages/index.html`:
 click anywhere in GB for the same in-browser horizon, with sun tracks
 interpolated per lat/lon. Buildings are not in the UK pyramid (use the
