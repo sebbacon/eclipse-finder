@@ -89,7 +89,8 @@ _HTML = r"""<!doctype html>
  #map{position:absolute;top:0;left:0;right:0;bottom:0}
  #panel{position:absolute;top:0;right:0;bottom:0;width:min(480px,92vw);
    background:#fff;box-shadow:-2px 0 8px rgba(0,0,0,.25);overflow-y:auto;
-   transform:translateX(100%);transition:transform .18s;padding:14px 16px;box-sizing:border-box}
+   transform:translateX(100%);transition:transform .18s;padding:14px 16px;
+   box-sizing:border-box;z-index:1000}
  #panel.open{transform:none}
  #panel h3{margin:.2em 0 .4em}
  #panel .stats{display:grid;grid-template-columns:auto auto;gap:2px 14px;margin:.5em 0}
@@ -172,6 +173,7 @@ function showPanel(s){
   document.getElementById("panel").classList.add("open");
 }
 function closePanel(){ document.getElementById("panel").classList.remove("open"); }
+if (location.hash === "#test") setTimeout(() => showPanel(D.sites[0]), 300);
 
 function drawChart(s){
   const W = 448, H = 250, mL = 34, mB = 24, mT = 8, mR = 6;
