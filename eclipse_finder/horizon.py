@@ -48,7 +48,7 @@ class HorizonGrid:
         east = np.sin(az_rad) * R
         north = np.cos(az_rad) * R
         dcol = east / m_lon / dem.res
-        drow = -north / m_lat / dem.res
+        drow = -north / m_lat / dem.res_lat
         return cls(az_deg=az_deg, range_m=range_m, dcol=dcol, drow=drow, ref_az=ref_lat)
 
 

@@ -42,8 +42,8 @@ plot:  ## map + horizon plots for top candidates (run search first)
 access:  ## drive/park/walk/PROW analysis + re-rank (run search first)
     {{run}} access --top 20
 
-osm:  ## build local OSM access cache from GB PBF (kills Overpass dependency)
-    curl -sL -C - -o data/osm/great-britain.osm.pbf https://download.geofabrik.de/europe/great-britain-latest.osm.pbf
+osm:  ## build local OSM access cache from GB PBF (downloads once)
+    @test -f data/osm/great-britain.osm.pbf || curl -sL -o data/osm/great-britain.osm.pbf https://download.geofabrik.de/europe/great-britain-latest.osm.pbf
     {{run}} osm --top 20
 
 refine:  ## sub-grid standing-point refinement for top access sites

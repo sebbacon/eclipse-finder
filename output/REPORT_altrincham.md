@@ -4,62 +4,62 @@ Eclipse (at origin): first contact 17:14 UTC, maximum 18:10 UTC (magnitude 92.6%
 
 | # | Location (approx.) | Coordinates | Elev | Drive | Walk | Horizon towards eclipse | Min sun clearance | Veg risk | Access conf |
 |---|---|---|---:|---:|---:|---:|---:|---:|---|
-| 1 | Blackstone Edge / White Moss moor (Pennine Way, E of Littleborough) | 53.61083, -2.11126 | 509 m | 40 min | 5 min (0.2 km) | -0.1° (bare -0.1°) | 5.14° | 0.03° | 3 |
-| 2 | Wessenden Head moors (Pennine Way) | 53.52572, -2.13203 | 476 m | 29 min | 10 min (0.5 km) | -0.4° (bare -0.4°) | 5.34° | 0.03° | 2 |
-| 3 | Wessenden Head moors (Pennine Way) | 53.53504, -2.13203 | 469 m | 30 min | 3 min (0.3 km) | -0.3° (bare -0.3°) | 5.33° | 0.14° | 2 |
-| 4 | Standedge / West Nab moor | 53.54698, -2.13158 | 463 m | 33 min | 0 min (0.0 km) | -0.3° (bare -0.3°) | 5.32° | 0.03° | 2 |
-| 5 | Wessenden Moor / Rod Moor | 53.51452, -2.12586 | 449 m | 29 min | 6 min (0.3 km) | -0.2° (bare -0.2°) | 5.31° | 0.03° | 2 |
-| 6 | Wessenden Moor / Rod Moor | 53.50683, -2.12165 | 451 m | 34 min | 16 min (0.8 km) | -0.1° (bare -0.1°) | 5.28° | 0.20° | 2 |
-| 7 | Rishworth Moor | 53.52184, -2.31451 | 406 m | 33 min | 5 min (0.3 km) | -0.6° (bare -0.6°) | 5.27° | 0.00° | 2 |
-| 8 | Bosley Minn / Cloud ridge (Cheshire escarpment) | 53.32811, -2.51265 | 447 m | 19 min | 20 min (1.4 km) | -0.7° (bare -0.7°) | 5.32° | 0.01° | 3 |
-| 9 | Bull Hill / Holcombe Moor N | 53.66111, -2.31601 | 456 m | 42 min | 15 min (0.7 km) | 0.1° (bare 0.1°) | 5.32° | 0.04° | 2 |
-| 10 | Bull Hill / Holcombe Moor N | 53.66627, -2.32263 | 447 m | 45 min | 24 min (1.5 km) | 0.1° (bare 0.1°) | 5.29° | 0.04° | 2 |
+| 1 | Whetstone Ridge / Axe Edge Moor (W of Goyt) | 53.23444, -2.00452 | 526 m | 41 min | 18 min (1.3 km) | 0.4° (bare 0.4°) | 5.38° | 0.01° | 2 |
+| 2 | Whetstone Ridge E shoulder (Three Shires Head moors) | 53.22738, -1.99654 | 511 m | 45 min | 15 min (0.6 km) | -0.3° (bare -0.3°) | 5.36° | 0.01° | 2 |
+| 3 | Bleaklow S plateau (above Wessenden Head) | 53.42651, -1.86976 | 528 m | 43 min | 12 min (0.9 km) | 0.1° (bare -0.0°) | 5.25° | 0.18° | 1 |
+| 4 | Cats Tor / Shining Tor ridge (E of Goyt) | 53.28019, -2.00963 | 518 m | 45 min | 21 min (1.0 km) | -0.6° (bare -0.6°) | 5.32° | 0.01° | 3 |
+| 5 | Oliver Hill / Roaches shoulder | 53.20494, -1.96402 | 498 m | 53 min | 10 min (0.5 km) | -0.0° (bare -0.0°) | 5.34° | 0.03° | 3 |
+| 6 | Shining Tor (Cheshire/Derbys boundary ridge) | 53.26130, -2.00963 | 556 m | 39 min | – | -0.6° (bare -0.6°) | 5.37° | 0.01° | 2 |
+| 7 | Lord's Seat / Kinder SE edge (above Hayfield) | 53.34684, -1.84042 | 539 m | 46 min | 36 min (1.5 km) | -0.1° (bare -0.1°) | 5.37° | 0.06° | 1 |
+| 8 | Bleaklow W moors (above Torside) | 53.41956, -1.90138 | 533 m | 42 min | – | -0.3° (bare -0.3°) | 5.32° | 0.01° | 1 |
+| 9 | Brown Knoll / Kinder S shoulder | 53.35696, -1.86812 | 531 m | 52 min | – | 0.6° (bare 0.6°) | 5.36° | 0.29° | 1 |
+| 10 | Higher Shelf Stones / Bleaklow High | 53.45094, -1.86992 | 617 m | 43 min | – | -0.4° (bare -0.4°) | 5.38° | 0.11° | 1 |
 
 ## Top five, in detail
 
-### 1. Blackstone Edge / White Moss moor (Pennine Way, E of Littleborough) — 53.61083, -2.11126
-- **Where to stand:** within ~30 m of 53.61083, -2.11126 (509 m); refined point lies 98 m from a mapped public path/track.
+### 1. Whetstone Ridge / Axe Edge Moor (W of Goyt) — 53.23444, -2.00452
+- **Where to stand:** within ~30 m of 53.23444, -2.00452 (526 m); refined point lies 197 m from a mapped public path/track.
 - **Look:** WSW→WNW (az 267–289°); sun descends 21°→5° during the eclipse, max at az ~278°.
-- **Distant horizon (computed):** az 265°: -0.70° at 54 km; az 275°: -0.73° at ≥55 km (beyond analysis range); az 285°: -0.49° at 29 km; az 295°: -0.27° at 37 km.
-- **Why the model likes it:** minimum clearance 5.14° over the whole eclipse window; horizon ≤ -0.27° towards the sun; open moorland, local tree cover 0%.
-- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.03° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
-- **Parking/access:** drive 40 min from south Altrincham; nearest mapped parking ~0.2 km; walk 5 min.
+- **Distant horizon (computed):** az 265°: -0.63° at 46 km; az 275°: -0.63° at 48 km; az 285°: -0.75° at 54 km; az 295°: -0.37° at 0 km.
+- **Why the model likes it:** minimum clearance 5.38° over the whole eclipse window; horizon ≤ -0.37° towards the sun; open moorland, local tree cover 0%.
+- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.01° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
+- **Parking/access:** drive 41 min from south Altrincham; nearest mapped parking ~1.3 km; walk 18 min.
 - **Uncertainty:** standing point from 30 m DEM (±a few m vertically); OSM path proximity = mapped paths only; names inferred from coordinates.
 
-### 2. Wessenden Head moors (Pennine Way) — 53.52572, -2.13203
-- **Where to stand:** within ~30 m of 53.52572, -2.13203 (476 m); refined point lies 6 m from a mapped public path/track.
+### 2. Whetstone Ridge E shoulder (Three Shires Head moors) — 53.22738, -1.99654
+- **Where to stand:** within ~30 m of 53.22738, -1.99654 (511 m); refined point lies 95 m from a mapped public path/track.
 - **Look:** WSW→WNW (az 267–289°); sun descends 21°→5° during the eclipse, max at az ~278°.
-- **Distant horizon (computed):** az 265°: -0.45° at 12 km; az 275°: -0.69° at 54 km; az 285°: -0.70° at ≥55 km (beyond analysis range); az 295°: -0.61° at 33 km.
-- **Why the model likes it:** minimum clearance 5.34° over the whole eclipse window; horizon ≤ -0.45° towards the sun; open moorland, local tree cover 0%.
-- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.03° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
-- **Parking/access:** drive 29 min from south Altrincham; nearest mapped parking ~0.5 km; walk 10 min.
+- **Distant horizon (computed):** az 265°: -0.60° at 45 km; az 275°: -0.63° at 48 km; az 285°: -0.72° at 47 km; az 295°: -0.68° at 54 km.
+- **Why the model likes it:** minimum clearance 5.36° over the whole eclipse window; horizon ≤ -0.60° towards the sun; open moorland, local tree cover 0%.
+- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.01° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
+- **Parking/access:** drive 45 min from south Altrincham; nearest mapped parking ~0.6 km; walk 15 min.
 - **Uncertainty:** standing point from 30 m DEM (±a few m vertically); OSM path proximity = mapped paths only; names inferred from coordinates.
 
-### 3. Wessenden Head moors (Pennine Way) — 53.53504, -2.13203
-- **Where to stand:** within ~30 m of 53.53504, -2.13203 (469 m); refined point lies 6 m from a mapped public path/track.
+### 3. Bleaklow S plateau (above Wessenden Head) — 53.42651, -1.86976
+- **Where to stand:** within ~30 m of 53.42651, -1.86976 (528 m); refined point lies 217 m from a mapped public path/track.
 - **Look:** WSW→WNW (az 267–289°); sun descends 21°→5° during the eclipse, max at az ~278°.
-- **Distant horizon (computed):** az 265°: -0.54° at 12 km; az 275°: -0.68° at 54 km; az 285°: -0.69° at ≥55 km (beyond analysis range); az 295°: -0.55° at 32 km.
-- **Why the model likes it:** minimum clearance 5.33° over the whole eclipse window; horizon ≤ -0.54° towards the sun; open moorland, local tree cover 0%.
-- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.14° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
-- **Parking/access:** drive 30 min from south Altrincham; nearest mapped parking ~0.3 km; walk 3 min.
+- **Distant horizon (computed):** az 265°: -0.74° at 1 km; az 275°: -0.71° at 53 km; az 285°: -0.72° at 52 km; az 295°: -0.41° at 47 km.
+- **Why the model likes it:** minimum clearance 5.25° over the whole eclipse window; horizon ≤ -0.41° towards the sun; open moorland, local tree cover 0%.
+- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.18° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
+- **Parking/access:** drive 43 min from south Altrincham; nearest mapped parking ~0.9 km; walk 12 min.
 - **Uncertainty:** standing point from 30 m DEM (±a few m vertically); OSM path proximity = mapped paths only; names inferred from coordinates.
 
-### 4. Standedge / West Nab moor — 53.54698, -2.13158
-- **Where to stand:** within ~30 m of 53.54698, -2.13158 (463 m); refined point lies 18 m from a mapped public path/track.
+### 4. Cats Tor / Shining Tor ridge (E of Goyt) — 53.28019, -2.00963
+- **Where to stand:** within ~30 m of 53.28019, -2.00963 (518 m); refined point lies 35 m from a mapped public path/track.
 - **Look:** WSW→WNW (az 267–289°); sun descends 21°→5° during the eclipse, max at az ~278°.
-- **Distant horizon (computed):** az 265°: -0.67° at 24 km; az 275°: -0.67° at 53 km; az 285°: -0.69° at 53 km; az 295°: -0.50° at 31 km.
-- **Why the model likes it:** minimum clearance 5.32° over the whole eclipse window; horizon ≤ -0.50° towards the sun; open moorland, local tree cover 0%.
-- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.03° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
-- **Parking/access:** drive 33 min from south Altrincham; nearest mapped parking ~0.0 km; walk 0 min.
+- **Distant horizon (computed):** az 265°: -0.70° at 48 km; az 275°: -0.72° at 48 km; az 285°: -0.71° at ≥55 km (beyond analysis range); az 295°: -0.68° at 53 km.
+- **Why the model likes it:** minimum clearance 5.32° over the whole eclipse window; horizon ≤ -0.68° towards the sun; open moorland, local tree cover 0%.
+- **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.01° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
+- **Parking/access:** drive 45 min from south Altrincham; nearest mapped parking ~1.0 km; walk 21 min.
 - **Uncertainty:** standing point from 30 m DEM (±a few m vertically); OSM path proximity = mapped paths only; names inferred from coordinates.
 
-### 5. Wessenden Moor / Rod Moor — 53.51452, -2.12586
-- **Where to stand:** within ~30 m of 53.51452, -2.12586 (449 m); refined point lies 59 m from a mapped public path/track.
+### 5. Oliver Hill / Roaches shoulder — 53.20494, -1.96402
+- **Where to stand:** within ~30 m of 53.20494, -1.96402 (498 m); refined point lies 96 m from a mapped public path/track.
 - **Look:** WSW→WNW (az 267–289°); sun descends 21°→5° during the eclipse, max at az ~278°.
-- **Distant horizon (computed):** az 265°: -0.49° at 12 km; az 275°: -0.31° at 11 km; az 285°: -0.66° at ≥55 km (beyond analysis range); az 295°: -0.60° at 34 km.
-- **Why the model likes it:** minimum clearance 5.31° over the whole eclipse window; horizon ≤ -0.31° towards the sun; open moorland, local tree cover 0%.
+- **Distant horizon (computed):** az 265°: -0.62° at 47 km; az 275°: -0.62° at 51 km; az 285°: -0.66° at 54 km; az 295°: -0.37° at 5 km.
+- **Why the model likes it:** minimum clearance 5.34° over the whole eclipse window; horizon ≤ -0.37° towards the sun; open moorland, local tree cover 0%.
 - **Trees/buildings:** vegetation-corrected horizon exceeds bare terrain by ≤ 0.03° (modelled canopy, Hansen 30 m). No mapped woodland in the corridor; near-field hedges/lone trees below 30 m resolution remain possible → ground-check.
-- **Parking/access:** drive 29 min from south Altrincham; nearest mapped parking ~0.3 km; walk 6 min.
+- **Parking/access:** drive 53 min from south Altrincham; nearest mapped parking ~0.5 km; walk 10 min.
 - **Uncertainty:** standing point from 30 m DEM (±a few m vertically); OSM path proximity = mapped paths only; names inferred from coordinates.
 
 ## Verification status

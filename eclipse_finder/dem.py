@@ -122,18 +122,20 @@ class Dem:
         if self.crs != "EPSG:4326":
             raise NotImplementedError(f"DEM must be EPSG:4326, got {self.crs}")
         self.h, self.w = self.a.shape
-        # affine: lon = c0 + col*res ; lat = r0 + row*(-res)
+        # affine: lon = c0 + col*res ; lat = r0 + row*(-res_lat)
+        # (Copernicus COGs are anisotropic in degrees: ~1.5" lon x 1" lat at 53N)
         self.res = self.transform.a
+        self.res_lat = abs(self.transform.e)
         self.lon0 = self.transform.c
         self.lat0 = self.transform.f
 
     def lonlat_to_px(self, lon: np.ndarray, lat: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         col = (lon - self.lon0) / self.res
-        row = (self.lat0 - lat) / self.res
+        row = (self.lat0 - lat) / self.res_lat
         return col, row
 
     def px_to_lonlat(self, col: np.ndarray, row: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        return self.lon0 + col * self.res, self.lat0 - row * self.res
+        return self.lon0 + col * self.res, self.lat0 - row * self.res_lat
 
     def sample_bilinear(self, col: np.ndarray, row: np.ndarray, out_of_range=np.nan) -> np.ndarray:
         c0 = np.floor(col).astype(np.int64)

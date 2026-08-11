@@ -90,7 +90,7 @@ def plot_map(dem: Dem, origin: tuple[float, float], candidates: list[dict],
     step = max(1, min(a.shape) // 1400)
     sub = a[::step, ::step]
     ext = (dem.lon0, dem.lon0 + dem.w * dem.res,
-           dem.lat0 - dem.h * dem.res, dem.lat0)
+           dem.lat0 - dem.h * dem.res_lat, dem.lat0)
 
     fig, ax = plt.subplots(figsize=(10, 10))
     im = ax.imshow(sub, extent=ext, cmap="terrain", origin="upper", vmin=0, vmax=700)

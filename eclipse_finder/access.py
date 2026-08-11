@@ -152,7 +152,7 @@ def osm_near(lat: float, lon: float, verbose: bool = False) -> dict | None:
         return json.loads(cache.read_text())
     q = (
         '[out:json][timeout:60];('
-        f'nwr["amenity"="parking"](around:1500,{lat},{lon});'
+        f'nwr["amenity"="parking"](around:4000,{lat},{lon});'
         f'way["highway"~"^(path|footway|track|steps|bridleway)$"](around:300,{lat},{lon});'
         f'way["leisure"="nature_reserve"](around:400,{lat},{lon});'
         f'relation["leisure"="nature_reserve"](around:400,{lat},{lon});'

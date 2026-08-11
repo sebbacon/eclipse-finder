@@ -25,7 +25,7 @@ PBF_PATH = DATA_DIR / "osm" / "great-britain.osm.pbf"
 
 PATH_HW = {"path", "footway", "track", "steps", "bridleway"}
 LAND_NATURAL = {"heath", "moor", "grassland", "fell"}
-R_PARK, R_PATH, R_LAND = 1500.0, 300.0, 400.0
+R_PARK, R_PATH, R_LAND = 4000.0, 300.0, 400.0
 
 
 def _proj(lat0: float):

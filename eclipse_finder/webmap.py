@@ -34,7 +34,7 @@ def build_webmap(name: str, verbose: bool = True):
     geo = compute_eclipse_geometry(meta["lat"], meta["lon"], meta["date"])
     az0, az1 = azimuth_sector(geo, 12.0)
 
-    bbox = (dem.lon0, dem.lat0 - dem.h * dem.res, dem.lon0 + dem.w * dem.res, dem.lat0)
+    bbox = (dem.lon0, dem.lat0 - dem.h * dem.res_lat, dem.lon0 + dem.w * dem.res, dem.lat0)
     veg = Veg.for_bbox(bbox, verbose=verbose)
     az_axis = np.arange(AZ0_PLOT, AZ1_PLOT + 0.5, 1.0)
     grid = HorizonGrid.build(dem, az_axis, default_ranges(mr), meta["lat"])
@@ -56,6 +56,20 @@ def build_webmap(name: str, verbose: bool = True):
         if verbose:
             print(f"[webmap] {i}/{len(rows)} {lat:.4f},{lon:.4f}")
 
+    obare = horizon_profile(dem, meta["lon"], meta["lat"], grid)
+    oveg = horizon_profile(dem, meta["lon"], meta["lat"], grid, veg=veg)
+    oclear = min(s.alt_deg - float(np.interp(s.az_deg, az_axis, oveg))
+                 for s in geo.useful_samples)
+    origin_site = dict(
+        rank=0, lon=meta["lon"], lat=meta["lat"],
+        elev=round(float(dem.elevation_at(meta["lon"], meta["lat"])), 1),
+        min_clear=round(float(oclear), 2),
+        veg_risk=round(float(np.max(oveg - obare)), 2),
+        score=None,
+        bare=[round(float(x), 2) for x in obare],
+        veg=[round(float(x), 2) for x in oveg],
+    )
+
     track = []
     for j, s in enumerate(geo.useful_samples):
         track.append([round(s.az_deg, 2), round(s.alt_deg, 2),
@@ -66,7 +80,7 @@ def build_webmap(name: str, verbose: bool = True):
         origin=[meta["lat"], meta["lon"]],
         sector=[round(az0, 1), round(az1, 1)],
         az_axis=[round(float(a), 1) for a in az_axis],
-        track=track, sites=sites,
+        track=track, sites=sites, origin_site=origin_site,
         mag=round(geo.max_magnitude, 3),
         t_max=geo.contacts["maximum"].strftime("%H:%M"),
     )
@@ -131,8 +145,9 @@ L.control.layers({"OpenTopoMap": topo, "OSM": osm}).addTo(map);
     fillOpacity: .15, interactive: false}).addTo(map);
 })();
 
-L.marker(D.origin, {interactive: false}).addTo(map)
-  .bindTooltip("origin", {permanent: true, direction: "right", className: "muted"});
+L.marker(D.origin).addTo(map)
+  .bindTooltip("origin (calc centre) — click for horizon", {direction: "right"})
+  .on("click", () => showPanel(D.origin_site));
 
 const scores = D.sites.map(s => s.score);
 const smin = Math.min(...scores), smax = Math.max(...scores);
@@ -155,13 +170,13 @@ function showPanel(s){
   const gmap = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lon}&travelmode=driving`;
   const osmL = `https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lon}#map=15/${s.lat}/${s.lon}`;
   document.getElementById("pbody").innerHTML = `
-    <h3>#${s.rank} — ${s.elev} m</h3>
+    <h3>${s.rank ? "#" + s.rank : "Origin (calc centre)"} — ${s.elev} m</h3>
     <div class="stats">
       <span>Coordinates</span><b>${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}</b>
       <span>Min sun clearance</span><b>${s.min_clear}°</b>
       <span>Vegetation risk</span><b>${s.veg_risk}°</b>
-      <span>Local tree cover</span><b>${s.tc_obs}%</b>
-      <span>Geometry score</span><b>${s.score}</b>
+      <span>Local tree cover</span><b>${s.tc_obs != null ? s.tc_obs + "%" : "–"}</b>
+      <span>Geometry score</span><b>${s.score != null ? s.score : "–"}</b>
     </div>
     <a class="btn" target="_blank" href="${gmap}">Directions (Google Maps)</a>
     <a class="btn alt" target="_blank" href="${osmL}">OpenStreetMap</a>
@@ -174,6 +189,7 @@ function showPanel(s){
 }
 function closePanel(){ document.getElementById("panel").classList.remove("open"); }
 if (location.hash === "#test") setTimeout(() => showPanel(D.sites[0]), 300);
+if (location.hash === "#testo") setTimeout(() => showPanel(D.origin_site), 300);
 
 function drawChart(s){
   const W = 448, H = 250, mL = 34, mB = 24, mT = 8, mR = 6;

@@ -84,13 +84,15 @@ horizon-profile PNGs). DEM tiles are cached in `data/dem/`.
 - **Verified computationally**: eclipse contacts/magnitude; sun alt/az track;
   azimuth sector; terrain horizon profiles (30 m DEM); vegetation-corrected
   horizons (Hansen 30 m canopy model); clearance scores; observer-canopy mask.
-- **Validated behaviour**: Alderley Edge — bare terrain horizon 4–7° looks
-  good, canopy-corrected horizon 14–19° blocks the late eclipse and the
-  observer point sits in 60% canopy → correctly rejected. Top moorland/scarp
-  sites show vegRisk ≈ 0 (genuinely tree-free sightlines).
-- **Inferred / not yet modelled**: buildings (rural rays unaffected; handled
-  at refinement via EA DSM); drive/walk times; land-access / public rights of
-  way; final ranking adjustments.
+- **Validated behaviour**: Alderley Edge — with correct DEM geometry the
+  ridge's bare horizon towards the eclipse is ~0° (it overlooks the flat
+  Cheshire Plain) and modelled canopy adds ~1.5°, but the ridge top sits in
+  mapped woodland (observer-canopy mask) so it is correctly rejected as a
+  standing point. Top moorland sites show vegRisk ≈ 0 (genuinely tree-free
+  sightlines).
+- **Inferred / not yet modelled**: buildings (rural rays unaffected); sub-30 m
+  hedge lines; canopy heights from the Hansen model; land-access details.
+  EA 1 m LiDAR was probed but is not anonymously accessible.
 - **Would need ground-truthing**: exact standing spot, fence/stile access,
   local tree lines not in any dataset.
 

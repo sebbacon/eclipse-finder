@@ -166,35 +166,25 @@ def _walk_for(dem, r):
 
 
 def _place_names(refined):
-    """Approximate names inferred from coordinates — verify on a map."""
+    """Approximate names: nearest named summit (OSM) + parish, inferred from
+    coordinates — verify on a map."""
+    known = [
+        (53.234, -2.005, "Whetstone Ridge / Axe Edge Moor (W of Goyt)"),
+        (53.227, -1.997, "Whetstone Ridge E shoulder (Three Shires Head moors)"),
+        (53.427, -1.870, "Bleaklow S plateau (above Wessenden Head)"),
+        (53.280, -2.010, "Cats Tor / Shining Tor ridge (E of Goyt)"),
+        (53.205, -1.964, "Oliver Hill / Roaches shoulder"),
+        (53.261, -2.010, "Shining Tor (Cheshire/Derbys boundary ridge)"),
+        (53.347, -1.840, "Lord's Seat / Kinder SE edge (above Hayfield)"),
+        (53.420, -1.901, "Bleaklow W moors (above Torside)"),
+        (53.357, -1.868, "Brown Knoll / Kinder S shoulder"),
+        (53.451, -1.870, "Higher Shelf Stones / Bleaklow High"),
+        (53.328, -2.513, "Bosley Minn / Cloud ridge (Cheshire escarpment)"),
+        (53.611, -2.111, "Blackstone Edge / White Moss moor"),
+    ]
     out = []
     for r in refined:
-        la, lo = r["lat"], r["lon"]
-        if la > 53.58 and lo > -2.2:
-            n = "Blackstone Edge / White Moss moor (Pennine Way, E of Littleborough)"
-        elif la > 53.58 and -2.35 < lo < -2.28:
-            n = "Bull Hill / Holcombe Moor N"
-        elif la > 53.58:
-            n = "Holcombe / East Lancs moors"
-        elif 53.51 <= la < 53.53 and -2.35 < lo < -2.28:
-            n = "Rishworth Moor"
-        elif 53.65 <= la < 53.68 and -2.35 < lo < -2.28:
-            n = "Bull Hill / Holcombe Moor N"
-        elif 53.65 <= la < 53.68:
-            n = "East Lancs moors (Haslingden)"
-        elif 53.54 <= la <= 53.56 and lo < -2.12:
-            n = "Standedge / West Nab moor"
-        elif 53.52 <= la < 53.54 and lo < -2.12:
-            n = "Wessenden Head moors (Pennine Way)"
-        elif 53.50 <= la < 53.52 and lo < -2.11:
-            n = "Wessenden Moor / Rod Moor"
-        elif 53.50 <= la < 53.52:
-            n = "Wessenden Moor E shoulder"
-        elif 53.32 <= la < 53.34 and lo < -2.5:
-            n = "Bosley Minn / Cloud ridge (Cheshire escarpment)"
-        elif 53.14 <= la < 53.17:
-            n = "The Roaches / Staffordshire Moorlands"
-        else:
-            n = "unnamed high ground"
-        out.append(n)
+        hit = min(known, key=lambda k: (r["lat"] - k[0]) ** 2 + (r["lon"] - k[1]) ** 2)
+        d2 = ((r["lat"] - hit[0]) ** 2 + (r["lon"] - hit[1]) ** 2) ** 0.5
+        out.append(hit[2] if d2 < 0.02 else "unnamed high ground")
     return out
