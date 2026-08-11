@@ -1,0 +1,24 @@
+[project]
+name = "eclipse-finder"
+version = "0.1.0"
+description = "Geospatial search for clear eclipse-viewing sites (horizon modelling on DEMs)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "rasterio>=1.3",
+    "requests>=2.31",
+    "skyfield>=1.46",
+    "matplotlib>=3.8",
+    "osmium>=4.0",
+]
+
+[project.scripts]
+eclipse-finder = "eclipse_finder.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["eclipse_finder"]

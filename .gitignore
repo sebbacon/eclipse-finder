@@ -1,0 +1,15 @@
+# environment
+.venv/
+.mplcache/
+__pycache__/
+*.pyc
+
+# downloaded data (DEM tiles, Hansen, OSM PBF, per-site caches) — several GB
+data/
+
+# scratch
+*.part
+nohup.out
+.DS_Store
+
+# NOTE: output/ (reports, CSVs, plots) IS committed — it is the deliverable.
