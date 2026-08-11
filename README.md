@@ -138,8 +138,10 @@ Manchester where the server model has no buildings).
 (60 m terrain+canopy to 15 km, 180 m beyond; ~110 MB gzipped; ~1-3 MB fetched
 per click, cached in the browser). `just ukmap` writes `pages/index.html`:
 click anywhere in GB for the same in-browser horizon, with sun tracks
-interpolated per lat/lon. Buildings are not in the UK pyramid (use the
-per-origin bundles for those). Serve locally with `just serve-pages`;
+interpolated per lat/lon, plus buildings and hedges fetched live from OSM
+(Overpass) within 2 km of each click and rasterised client-side at 10 m
+(tagged heights else 2-storey default; degrades gracefully if Overpass is
+busy). Serve locally with `just serve-pages`;
 publish with `just ghrepo` once, then `just publish` (force-pushes `pages/`
 to an orphan `gh-pages` branch; site at sebbacon.github.io/eclipse-finder).
 

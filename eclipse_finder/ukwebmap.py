@@ -98,8 +98,8 @@ L.control.layers({"OpenTopoMap": topo, "OSM": osm}).addTo(map);
 document.getElementById("legend").innerHTML =
   `<b>UK eclipse horizon explorer</b> — ${D.date} (partial eclipse, mag ${D.tracks.mag}). ` +
   `Click anywhere: horizon computed in your browser from fetched terrain tiles ` +
-  `(60 m to 15 km, 180 m beyond). Trees modelled (30 m Hansen); ` +
-  `<b>buildings not included here</b> — use the per-origin bundles for that.`;
+  `(60 m to 15 km, 180 m beyond). Trees modelled (30 m Hansen); buildings and ` +
+  `hedges fetched live from OSM within 2 km of the click (when Overpass responds).`;
 
 // ------------------------------------------------------------ sun tracks --
 function sunTrack(lat, lon){
@@ -173,6 +173,72 @@ async function ensure(lon, lat){
   await Promise.all(jobs);
 }
 
+// ------------------------------------------------- live OSM buildings ----
+const BLD = new Map();
+function heightOf(t, dflt){
+  if (t.height) { const v = parseFloat(String(t.height).split(" ")[0].split("m")[0]);
+    if (isFinite(v)) return Math.max(1, Math.min(255, v)); }
+  if (t["building:levels"]) { const v = parseFloat(String(t["building:levels"]).split(";")[0]);
+    if (isFinite(v)) return Math.max(1, Math.min(255, 3*v + 2)); }
+  return dflt;
+}
+function rasterizeOSM(j, lat, lon){
+  const N = 400, R = 2000;
+  const cv = document.createElement("canvas"); cv.width = N; cv.height = N;
+  const cx = cv.getContext("2d", {willReadFrequently: true});
+  cx.globalCompositeOperation = "lighten";
+  const mLon = 111412.84 * Math.cos(lat*Math.PI/180), mLat = 111132.954;
+  const S = N / (2 * R);
+  const X = lo => ((lo - lon) * mLon + R) * S, Y = la => ((lat - la) * mLat + R) * S;
+  let nways = 0;
+  for (const el of (j.elements || [])) {
+    const t = el.tags || {};
+    let h = 0;
+    if (t.building && t.building !== "no") h = Math.round(heightOf(t, 6));
+    else if (t.barrier === "hedge" || t.natural === "hedge") h = 2;
+    if (!h) continue;
+    const g = el.geometry;
+    if (!g || g.length < 2) continue;
+    nways++;
+    cx.fillStyle = cx.strokeStyle = `rgb(${h},${h},${h})`;
+    cx.beginPath();
+    g.forEach((p, i) => i ? cx.lineTo(X(p.lon), Y(p.lat)) : cx.moveTo(X(p.lon), Y(p.lat)));
+    if (h > 2) { cx.closePath(); cx.fill(); } else { cx.lineWidth = 1; cx.stroke(); }
+  }
+  const d = cx.getImageData(0, 0, N, N).data;
+  const u = new Uint8Array(N * N);
+  for (let i = 0; i < N * N; i++) u[i] = d[4*i];
+  return {lon0: lon - R/mLon, lat0: lat + R/mLat,
+          resLon: 2*R/mLon/N, resLat: 2*R/mLat/N, n: N, b: u, nways};
+}
+async function buildingsAt(lat, lon){
+  const key = (Math.round(lat*100)/100) + "," + (Math.round(lon*100)/100);
+  if (BLD.has(key)) return BLD.get(key);
+  let b = null;
+  const q = `[out:json][timeout:25];(way["building"](around:2000,${lat},${lon});` +
+            `way["barrier"="hedge"](around:2000,${lat},${lon});` +
+            `way["natural"="hedge"](around:2000,${lat},${lon}););out geom tags;`;
+  for (const mirror of ["https://overpass-api.de/api/interpreter",
+                        "https://overpass.kumi.systems/api/interpreter"]) {
+    try {
+      const r = await fetch(mirror, {method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: "data=" + encodeURIComponent(q)});
+      if (r.ok) { b = rasterizeOSM(await r.json(), lat, lon); break; }
+    } catch (e) { /* try next mirror */ }
+  }
+  BLD.set(key, b);
+  return b;
+}
+function sampleB(bld, lon, lat){
+  if (!bld) return 0;
+  const col = (lon - bld.lon0) / bld.resLon, row = (bld.lat0 - lat) / bld.resLat;
+  if (col < 0 || row < 0 || col > bld.n - 1 || row > bld.n - 1) return 0;
+  const c0 = Math.min(Math.floor(col), bld.n - 2), r0 = Math.min(Math.floor(row), bld.n - 2);
+  const fc = col - c0, fr = row - r0, i = r0 * bld.n + c0, A = bld.b;
+  return A[i]*(1-fc)*(1-fr) + A[i+1]*fc*(1-fr) + A[i+bld.n]*(1-fc)*fr + A[i+bld.n+1]*fc*fr;
+}
+
 // ---------------------------------------------------------------- horizon --
 const RANGES = (() => { const r = [];
   for (let d = 30; d < 8000; d += 30) r.push(d);
@@ -182,7 +248,7 @@ const RANGES = (() => { const r = [];
 const DROP = RANGES.map(d => d*d / (2*6371000) * (1 - 0.13));
 const AZS = (() => { const a = []; for (let x = 140; x <= 370; x += 1) a.push(x); return a; })();
 
-function horizon(lon, lat){
+function horizon(lon, lat, bld){
   const mLon = 111412.84 * Math.cos(lat*Math.PI/180) - 93.5 * Math.cos(3*lat*Math.PI/180);
   const mLat = 111132.954 - 559.822 * Math.cos(2*lat*Math.PI/180)
              + 1.175 * Math.cos(4*lat*Math.PI/180);
@@ -201,7 +267,8 @@ function horizon(lon, lat){
       const a1 = Math.atan2(h - hObs - DROP[ri], d) * 57.29578;
       if (a1 > mb) mb = a1;
       const c = sampleAt(lv, t, slon, slat, "c");
-      const a2 = Math.atan2(h + 0.5*c - hObs - DROP[ri], d) * 57.29578;
+      const o = Math.max(0.5*c, sampleB(bld, slon, slat));
+      const a2 = Math.atan2(h + o - hObs - DROP[ri], d) * 57.29578;
       if (a2 > mv) mv = a2;
     }
     bare[ai] = mb; vegh[ai] = mv;
@@ -215,9 +282,11 @@ async function showAt(lat, lon){
   document.getElementById("busy").style.display = "block";
   const kb0 = fetchedBytes;
   await ensure(lon, lat);
+  const bld = await buildingsAt(lat, lon);
   const t0 = performance.now();
-  const h = horizon(lon, lat);
+  const h = horizon(lon, lat, bld);
   const ms = Math.round(performance.now() - t0);
+  const b0 = sampleB(bld, lon, lat);
   const track = sunTrack(lat, lon), sec = sector(track);
   let minC = 1e9, maxVeg = -90, maxBare = -90;
   for (const s of track) {
@@ -237,15 +306,18 @@ async function showAt(lat, lon){
       <span>Min sun clearance</span><b>${minC.toFixed(2)}°</b>
       <span>Horizon towards sun</span><b>${maxVeg.toFixed(2)}° (bare ${maxBare.toFixed(2)}°)</b>
       <span>Tiles fetched</span><b>${((fetchedBytes-kb0)/1024).toFixed(0)} KB</b>
+      <span>Buildings/hedges</span><b>${bld ? `live OSM, ${bld.nways} ways (2 km)` : "unavailable (Overpass busy)"}</b>
       <span>Computed in</span><b>${ms} ms</b>
     </div>
+    ${b0 > 0.5 ? `<p style="color:#b3261e"><b>⚠ click point is inside a mapped building ` +
+      `(~${Math.round(b0)} m)</b> — horizon indicative only.</p>` : ""}
     <a class="btn" target="_blank" href="${gmap}">Directions (Google Maps)</a>
     <a class="btn alt" target="_blank" href="${osmL}">OpenStreetMap</a>
     <div id="chart"></div>
-    <p class="muted">Brown: bare-terrain horizon. Green: incl. modelled canopy.
-    Orange: sun track for this latitude/longitude (UTC). Gold band: eclipse
-    sector. Terrain 60 m to 15 km, 180 m beyond; <b>buildings not modelled in
-    the UK explorer</b> (use per-origin bundles for that).</p>`;
+    <p class="muted">Brown: bare-terrain horizon. Green: incl. modelled canopy plus
+    OSM buildings/hedges (live, within 2 km of the click; tagged heights else
+    2-storey default). Orange: sun track for this latitude/longitude (UTC).
+    Gold band: eclipse sector. Terrain 60 m to 15 km, 180 m beyond.</p>`;
   drawChart(h, track, sec);
   document.getElementById("panel").classList.add("open");
   document.getElementById("busy").style.display = "none";
