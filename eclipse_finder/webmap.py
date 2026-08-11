@@ -143,6 +143,8 @@ def build_webmap(name: str, verbose: bool = True):
         mag=round(geo.max_magnitude, 3),
         t_max=geo.contacts["maximum"].strftime("%H:%M"),
         inner_km=INNER_RADIUS_KM,
+        t0m=geo.useful_samples[0].t_utc.hour * 60
+            + geo.useful_samples[0].t_utc.minute,
     )
     html = (_HTML.replace("__DATA__", json.dumps(data))
                  .replace("__NAME__", name)
@@ -173,6 +175,9 @@ _HTML = r"""<!doctype html>
    background:#1a73e8;color:#fff;text-decoration:none;font-weight:600}
  a.btn.alt{background:#5f6368}
  #close{float:right;cursor:pointer;font-size:16px;color:#888}
+ #verdict{font-size:15px;font-weight:700;padding:8px 10px;border-radius:8px;margin:.4em 0}
+ #verdict.ok{background:#e8f5e9;color:#1b5e20}
+ #verdict.bad{background:#ffebee;color:#b71c1c}
  .muted{color:#777}
  svg{max-width:100%}
  #legend{position:absolute;bottom:12px;left:12px;z-index:900;background:#fffc;
@@ -224,10 +229,9 @@ D.sites.forEach(s => {
 });
 
 document.getElementById("legend").innerHTML =
-  `<b>${D.name}</b> — ${D.date}, max ${D.t_max} UTC (mag ${D.mag})<br>` +
-  `click <i>anywhere</i>: horizon computed in your browser (30 m terrain+canopy within ` +
-  `${D.inner_km} km of origin, ~90 m beyond; OSM buildings+hedges at 10 m in the inner ` +
-  `region). Markers = geometry-ranked sites (green = best).`;
+  `<b>${D.name}</b> — eclipse ${D.date}, biggest around ${bstLabel(D.t_max)} UK time.<br>` +
+  `Click anywhere to check the view from that spot (drag to move, scroll to zoom). ` +
+  `Coloured dots = the best ranked spots (green = best).`;
 
 // ---------------------------------------------------------- raster decode --
 let G = null;  // parsed raster grids
@@ -329,6 +333,16 @@ function horizon(lon, lat){
 }
 
 // ------------------------------------------------------------------ panel --
+// minutes-after-midnight -> UK clock time (August = BST = UTC+1)
+function fmtTime(m){
+  m = Math.round(m + 60) % 1440;
+  return String(Math.floor(m/60)).padStart(2,"0") + ":" + String(m%60).padStart(2,"0");
+}
+function bstLabel(hhmm){
+  if (!hhmm) return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  return fmtTime(h*60 + m);
+}
 function showPoint(lat, lon, label){
   if (!G) return;
   document.getElementById("busy").style.display = "block";
@@ -338,35 +352,43 @@ function showPoint(lat, lon, label){
     const ms = Math.round(performance.now() - t0);
     const b0 = sample(lon, lat, 0, "b");
     // clearances over the sun track
-    let minC = 1e9, maxVeg = -90, maxBare = -90;
-    for (const s of D.track) {
-      if (s[0] < D.sector[0] || s[0] > D.sector[1]) continue;
+    let minC = 1e9, maxVeg = -90, maxBare = -90, bFirst = -1, bLast = -1;
+    D.track.forEach((s, idx) => {
+      if (s[0] < D.sector[0] || s[0] > D.sector[1]) return;
       const i = Math.round(s[0]) - AZS[0];
       const c = s[1] - h.veg[i];
       if (c < minC) minC = c;
       if (h.veg[i] > maxVeg) maxVeg = h.veg[i];
       if (h.bare[i] > maxBare) maxBare = h.bare[i];
-    }
+      if (h.veg[i] > s[1]) { if (bFirst < 0) bFirst = idx; bLast = idx; }
+    });
+    const verdict = bFirst < 0
+      ? "✔ Good view: the sun stays clear of hills, trees and buildings for the whole eclipse."
+      : `✘ Blocked: the sun disappears behind hills, trees or buildings from about ` +
+        `${fmtTime(D.t0m + bFirst)} until ${fmtTime(D.t0m + bLast)} (UK time).`;
     const gmap = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`;
     const osmL = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`;
     document.getElementById("pbody").innerHTML = `
-      <h3>${label} — ${h.elev.toFixed(0)} m</h3>
+      <h3>${label} — ${h.elev.toFixed(0)} m above sea level</h3>
+      <div id="verdict" class="${bFirst < 0 ? "ok" : "bad"}">${verdict}</div>
       <div class="stats">
-        <span>Coordinates</span><b>${lat.toFixed(5)}, ${lon.toFixed(5)}</b>
-        <span>Min sun clearance</span><b>${minC.toFixed(2)}°</b>
-        <span>Horizon towards sun</span><b>${maxVeg.toFixed(2)}° (bare ${maxBare.toFixed(2)}°)</b>
-        <span>Computed in</span><b>${ms} ms</b>
+        <span>Where</span><b>${lat.toFixed(5)}, ${lon.toFixed(5)}</b>
+        <span>Tallest blockage towards the sun</span><b>${maxVeg.toFixed(1)}° above a flat horizon</b>
+        <span>Worst gap between sun and blockage</span><b>${minC.toFixed(1)}° (below 0 = blocked)</b>
+        <span>Calculated in</span><b>${ms} ms</b>
       </div>
-      ${b0 > 0.5 ? `<p style="color:#b3261e"><b>⚠ click point is inside a mapped building ` +
-        `(~${Math.round(b0)} m)</b> — horizon indicative only.</p>` : ""}
+      ${b0 > 0.5 ? `<p style="color:#b3261e"><b>⚠ This spot is inside a building on the ` +
+        `map, so the result is only a rough guide.</b></p>` : ""}
       <a class="btn" target="_blank" href="${gmap}">Directions (Google Maps)</a>
-      <a class="btn alt" target="_blank" href="${osmL}">OpenStreetMap</a>
+      <a class="btn alt" target="_blank" href="${osmL}">See on OpenStreetMap</a>
       <div id="chart"></div>
-      <p class="muted">Brown fill: bare-terrain horizon. Green: incl. modelled canopy
-      (30 m Hansen) and OSM buildings/hedges (10 m, tagged or default heights),
-      combined as the worse obstacle. Orange: sun track (UTC labels). Gold band:
-      eclipse azimuth sector. Fine (30 m) terrain detail within ${D.inner_km} km of
-      origin; buildings/hedges modelled in the inner region only.</p>`;
+      <p class="muted">The picture shows what stands in the way in each compass
+      direction: brown = ground and hills, green = ground + trees + buildings,
+      orange dots = where the sun will be (UK clock time). If the green line is
+      above the orange line, the sun is hidden. Detailed data within
+      ${D.inner_km} km of the origin, coarser beyond. Small hedges, walls and
+      lone trees can be missing — double-check on the ground before
+      travelling.</p>`;
     drawChart(h);
     document.getElementById("panel").classList.add("open");
     document.getElementById("busy").style.display = "none";
@@ -393,10 +415,11 @@ function drawChart(h){
   D.track.forEach(t => { if (t[2]) el +=
     `<circle cx="${X(t[0])}" cy="${Y(t[1])}" r="2.2" fill="tab:orange"/>
      <text x="${X(t[0])}" y="${Y(t[1])-5}" font-size="8" text-anchor="middle"
-       fill="#666">${t[2]}</text>`; });
+       fill="#666">${bstLabel(t[2])}</text>`; });
   el += `<line x1="${mL}" y1="${Y(0)}" x2="${W-mR}" y2="${Y(0)}" stroke="#000" stroke-width=".7"/>`;
+  const dir = a => a === 180 ? "S" : a === 270 ? "W" : a === 360 ? "N" : a + "°";
   for (let a = 180; a <= 360; a += 30)
-    el += `<text x="${X(a)}" y="${H-8}" font-size="9" text-anchor="middle">${a}°</text>`;
+    el += `<text x="${X(a)}" y="${H-8}" font-size="9" text-anchor="middle">${dir(a)}</text>`;
   for (let v = 0; v <= ymax; v += 10)
     el += `<text x="${mL-4}" y="${Y(v)+3}" font-size="9" text-anchor="end">${v}°</text>`;
   document.getElementById("chart").innerHTML =
