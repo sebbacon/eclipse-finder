@@ -24,6 +24,7 @@ just osm        # optional: 2.2 GB GB PBF once, then OSM is offline
 just access     # OSRM drive times + parking/walk/paths, re-rank
 just refine     # exact standing points snapped to public paths
 just report     # output/REPORT_london.md + map + horizon plots
+just webmap     # interactive HTML map: all sites, click -> horizon profile
 ```
 
 Without `just osm`, `access` falls back to Overpass / the OSM API (slower,
@@ -43,6 +44,7 @@ just access                         # drive/park/walk/PROW + re-rank
 just osm                            # (optional) local GB PBF -> offline OSM cache
 just refine                         # sub-grid standing-point refinement
 just report                         # REPORT_<name>.md + final plots
+just webmap                         # interactive Leaflet map + SVG horizon profiles
 just smoke                          # fast iteration (15 km, 600 m grid)
 ```
 

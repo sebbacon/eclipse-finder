@@ -144,6 +144,11 @@ def cmd_plot(a):
         print(f"wrote {outp}")
 
 
+def cmd_webmap(a):
+    from .webmap import build_webmap
+    build_webmap(a.name)
+
+
 def cmd_report(a):
     from .report import build_report
     build_report(a.name)
@@ -224,6 +229,8 @@ def main():
 
     s = sub.add_parser("plot"); s.set_defaults(fn=cmd_plot)
     s.add_argument("--top", type=int, default=5)
+
+    s = sub.add_parser("webmap"); s.set_defaults(fn=cmd_webmap)
 
     s = sub.add_parser("report"); s.set_defaults(fn=cmd_report)
 

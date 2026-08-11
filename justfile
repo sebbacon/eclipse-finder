@@ -52,6 +52,9 @@ refine:  ## sub-grid standing-point refinement for top access sites
 report:  ## final REPORT_<name>.md + final plots (run refine first)
     {{run}} report
 
+webmap:  ## interactive HTML map, all candidates + horizon profiles
+    {{run}} webmap
+
 smoke:  ## fast iteration: small radius, coarse grid
     RADIUS=15 GRID=600 TOP=5 just search
     RADIUS=15 TOP=3 just plot
